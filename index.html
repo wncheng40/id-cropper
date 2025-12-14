@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V24 終極本地版 (Self-Hosted Model)</title>
+    <title>V29 檔名校正版</title>
     <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvScriptLoad()" type="text/javascript"></script>
     
     <style>
@@ -33,6 +33,7 @@
         }
         .step-box { border: 1px solid #444; padding: 15px; border-radius: 6px; background: #252525; transition: all 0.3s;}
         .step-box.active { border-color: #007bff; background: #2c3e50; }
+        .step-box.done { border-color: #28a745; opacity: 0.7; }
         .step-title { font-weight: bold; margin-bottom: 10px; display: block; color: #fff; font-size: 0.9rem; border-bottom: 1px solid #444; padding-bottom: 5px;}
         
         .upload-zone { 
@@ -90,22 +91,22 @@
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #555; transition: .4s; border-radius: 20px; }
         .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
-        input:checked + .slider { background-color: #4caf50; }
+        input:checked + .slider { background-color: #009688; }
         input:checked + .slider:before { transform: translateX(20px); }
-        .ai-badge { background: linear-gradient(45deg, #4caf50, #81c784); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; color: black; margin-left: 5px; }
+        .ai-badge { background: linear-gradient(45deg, #009688, #4db6ac); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; color: white; margin-left: 5px; }
         .mode-active { background: #e91e63; border-color: #c2185b; color: white; box-shadow: 0 0 8px rgba(233, 30, 99, 0.6);}
 
         #progressBarContainer { display:none; margin-top: 10px; background: #333; border-radius: 4px; height: 6px; overflow: hidden; }
-        #progressBar { width: 0%; height: 100%; background: #4caf50; transition: width 0.3s; }
-        #progressText { font-size: 0.8em; color: #4caf50; margin-top: 5px; display:none; white-space: pre-wrap;}
+        #progressBar { width: 0%; height: 100%; background: #009688; transition: width 0.3s; }
+        #progressText { font-size: 0.8em; color: #4db6ac; margin-top: 5px; display:none; white-space: pre-wrap;}
 
     </style>
 </head>
 <body>
 
 <div style="text-align: center;">
-    <h2>🪪 V24 終極本地版</h2>
-    <p class="subtitle">GitHub Hosted AI | 零外部連線</p>
+    <h2>🪪 V29 檔名校正版</h2>
+    <p class="subtitle">Local Hosted | Quantized Model</p>
 </div>
 
 <div class="main-layout">
@@ -131,7 +132,7 @@
 
                 <div class="ai-toggle-container">
                     <span style="font-size: 0.9em; display:flex; align-items:center;">
-                        🤖 AI 輔助偵測 <span class="ai-badge">Local</span>
+                        🤖 AI 輔助偵測 <span class="ai-badge">V29</span>
                     </span>
                     <label class="switch">
                         <input type="checkbox" id="showMaskToggle" checked onchange="toggleMaskOverlay()">
@@ -202,17 +203,22 @@
 <script type="module">
     import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.1'; 
     
-    // --- V24 關鍵：完全本地化 ---
-    env.allowLocalModels = true; // 允許本地
-    env.allowRemoteModels = false; // 禁止遠端 (確保不會偷連外網)
-    env.useBrowserCache = false; // 避免快取舊設定
+    // V29: 標準設定，不強制 quantized:false，讓它自動去抓 model_quantized.onnx
+    env.allowLocalModels = false; 
+    env.allowRemoteModels = true; 
+    env.useBrowserCache = true;
     env.backends.onnx.wasm.numThreads = 1;
 
-    // 設定本地模型路徑：指向您 GitHub 中的 'model' 資料夾
-    // 注意：transformers.js 會預設去找 'model/config.json' 等等
-    // 我們在這裡欺騙它，讓它認為網頁根目錄就是模型庫
-    
     let segmenter = null;
+
+    function getModelPath() {
+        let path = window.location.href;
+        if (path.endsWith('index.html')) {
+            path = path.substring(0, path.length - 'index.html'.length);
+        }
+        if (!path.endsWith('/')) path += '/';
+        return path + 'model/';
+    }
 
     window.initAI = async function() {
         if(segmenter) return true;
@@ -220,31 +226,32 @@
         const pBar = document.getElementById('progressBar');
         const pCon = document.getElementById('progressBarContainer');
         const pTxt = document.getElementById('progressText');
+        const modelPath = getModelPath();
         
         pCon.style.display = 'block';
         pTxt.style.display = 'block';
-        pTxt.innerText = "🚀 正在讀取 GitHub 模型檔案...";
+        pTxt.innerText = `🔍 正在讀取 GitHub 模型...`;
 
         try {
-            // 直接指定路徑 'model'，這會對應到 https://your-site/model/
-            segmenter = await pipeline('image-segmentation', 'model', {
-                local_files_only: true, // 強制只讀本地
+            // 注意：這裡移除了 quantized: false
+            // Transformers.js 預設會找 'model_quantized.onnx'
+            segmenter = await pipeline('image-segmentation', modelPath, {
                 progress_callback: (data) => {
                     if (data.status === 'progress') {
                         const percent = Math.round(data.progress * 100);
                         pBar.style.width = percent + "%";
-                        pTxt.innerText = `📥 載入中: ${percent}% (${data.file})`;
+                        pTxt.innerText = `📥 載入中: ${percent}%`;
                     } else if (data.status === 'done') {
-                        pTxt.innerText = "✅ 檔案讀取完成";
+                        pTxt.innerText = "✅ 載入完成";
                     }
                 }
             });
-            pTxt.innerText = "✅ AI 準備就緒 (Local)";
+            pTxt.innerText = "✅ AI 準備就緒";
             setTimeout(() => { pCon.style.display = 'none'; pTxt.style.display = 'none'; }, 2000);
             return true;
         } catch (e) { 
             console.error("AI 載入失敗", e); 
-            pTxt.innerText = "❌ 載入失敗！\n請確認您的 GitHub 上是否有 'model' 資料夾，\n且裡面包含 model.onnx (改名過), config.json, preprocessor_config.json";
+            pTxt.innerText = "❌ 錯誤：" + e.message + "\n請確認 GitHub 上檔名已改為 model_quantized.onnx";
             pTxt.style.color = "#ff5252";
             return false; 
         }
@@ -257,7 +264,7 @@
         }
         
         document.getElementById('progressText').style.display = 'block';
-        document.getElementById('progressText').innerText = "🧠 AI 運算中 (Local)...";
+        document.getElementById('progressText').innerText = "🧠 AI 運算中...";
         
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 60000));
         const processPromise = async () => {
