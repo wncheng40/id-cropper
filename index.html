@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V25 檔案診斷版</title>
+    <title>V26 最終修正版</title>
     <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvScriptLoad()" type="text/javascript"></script>
     
     <style>
@@ -90,22 +90,22 @@
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #555; transition: .4s; border-radius: 20px; }
         .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
-        input:checked + .slider { background-color: #673ab7; }
+        input:checked + .slider { background-color: #009688; }
         input:checked + .slider:before { transform: translateX(20px); }
-        .ai-badge { background: linear-gradient(45deg, #673ab7, #9575cd); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; color: white; margin-left: 5px; }
+        .ai-badge { background: linear-gradient(45deg, #009688, #4db6ac); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; color: white; margin-left: 5px; }
         .mode-active { background: #e91e63; border-color: #c2185b; color: white; box-shadow: 0 0 8px rgba(233, 30, 99, 0.6);}
 
         #progressBarContainer { display:none; margin-top: 10px; background: #333; border-radius: 4px; height: 6px; overflow: hidden; }
-        #progressBar { width: 0%; height: 100%; background: #673ab7; transition: width 0.3s; }
-        #progressText { font-size: 0.8em; color: #b39ddb; margin-top: 5px; display:none; white-space: pre-wrap;}
+        #progressBar { width: 0%; height: 100%; background: #009688; transition: width 0.3s; }
+        #progressText { font-size: 0.8em; color: #4db6ac; margin-top: 5px; display:none; white-space: pre-wrap;}
 
     </style>
 </head>
 <body>
 
 <div style="text-align: center;">
-    <h2>🪪 V25 檔案診斷版</h2>
-    <p class="subtitle">自動檢查模型狀態 | 絕對路徑修復</p>
+    <h2>🪪 V26 最終修正版</h2>
+    <p class="subtitle">GitHub Hosted AI | 修正本地路徑錯誤</p>
 </div>
 
 <div class="main-layout">
@@ -131,7 +131,7 @@
 
                 <div class="ai-toggle-container">
                     <span style="font-size: 0.9em; display:flex; align-items:center;">
-                        🤖 AI 輔助偵測 <span class="ai-badge">V25</span>
+                        🤖 AI 輔助偵測 <span class="ai-badge">GitHub</span>
                     </span>
                     <label class="switch">
                         <input type="checkbox" id="showMaskToggle" checked onchange="toggleMaskOverlay()">
@@ -202,30 +202,23 @@
 <script type="module">
     import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.1'; 
     
-    // V25 設定
-    env.allowLocalModels = true;
-    env.allowRemoteModels = false;
-    env.useBrowserCache = false;
+    // --- V26 關鍵設定 ---
+    // 解除 local_files_only 限制，因為 GitHub Pages 算是 Remote 來源
+    env.allowLocalModels = false; 
+    env.allowRemoteModels = true; 
+    env.useBrowserCache = true;
     env.backends.onnx.wasm.numThreads = 1;
 
     let segmenter = null;
 
-    // 工具：檢查檔案是否存在
-    async function checkFile(url) {
-        try {
-            const res = await fetch(url, { method: 'HEAD' });
-            return res.ok;
-        } catch { return false; }
-    }
-
     // 工具：取得目前網頁的根目錄
     function getModelPath() {
-        // 取得當前網址，去掉 index.html (如果有的話)，加上 model/
         let path = window.location.href;
         if (path.endsWith('index.html')) {
             path = path.substring(0, path.length - 'index.html'.length);
         }
         if (!path.endsWith('/')) path += '/';
+        // 這裡會產生 https://wncheng40.github.io/id-cropper/model/
         return path + 'model/';
     }
 
@@ -239,29 +232,12 @@
         
         pCon.style.display = 'block';
         pTxt.style.display = 'block';
-        pTxt.innerText = `🔍 正在檢查模型檔案...\n路徑: ${modelPath}`;
-
-        // 1. 執行檔案預檢
-        const configOk = await checkFile(modelPath + 'config.json');
-        const modelOk = await checkFile(modelPath + 'model.onnx');
-
-        if (!configOk) {
-            pTxt.innerText = `❌ 錯誤：找不到 config.json\n請確認 GitHub 上有 'model/config.json'`;
-            pTxt.style.color = "#ff5252";
-            return false;
-        }
-        if (!modelOk) {
-            pTxt.innerText = `❌ 錯誤：找不到 model.onnx\n請確認 GitHub 上有 'model/model.onnx'`;
-            pTxt.style.color = "#ff5252";
-            return false;
-        }
-
-        pTxt.innerText = "✅ 檔案檢查通過，正在載入 AI...";
+        pTxt.innerText = `🔍 從 GitHub 載入模型...\n路徑: ${modelPath}`;
 
         try {
-            // 使用絕對路徑載入
+            // 直接傳入絕對 URL，transformers.js 會把它當作網址來下載
             segmenter = await pipeline('image-segmentation', modelPath, {
-                local_files_only: true,
+                // 這裡拿掉 local_files_only，允許 fetch
                 progress_callback: (data) => {
                     if (data.status === 'progress') {
                         const percent = Math.round(data.progress * 100);
