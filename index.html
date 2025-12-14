@@ -56,7 +56,7 @@
         logger(`1. 偵測基礎路徑: ${basePath}`);
 
         // 測試檔案列表
-        const files = ['config.json', 'preprocessor_config.json', 'model.onnx'];
+        const files = ['config.json', 'preprocessor_config.json', 'model_quantized.onnx'];
         let allSuccess = true;
 
         for (const file of files) {
@@ -71,11 +71,11 @@
                     logger(`✅ ${file} 讀取成功 (HTTP ${response.status})`, 'success');
                     logger(`   - 大小: ${sizeMB} MB`);
 
-                    // 檢查是否為 LFS 指標檔 (如果 model.onnx 小於 1KB 就是假的)
-                    if (file === 'model.onnx' && size && parseInt(size) < 2000) {
-                        logger(`❌ 嚴重錯誤：model.onnx 只有 ${size} bytes！`, 'error');
+                    // 檢查是否為 LFS 指標檔 (如果 model_quantized.onnx 小於 1KB 就是假的)
+                    if (file === 'model_quantized.onnx' && size && parseInt(size) < 2000) {
+                        logger(`❌ 嚴重錯誤：model_quantized.onnx 只有 ${size} bytes！`, 'error');
                         logger(`   這代表您使用了 Git LFS，但 GitHub Pages 不支援。`, 'warning');
-                        logger(`   請重新上傳「普通檔案」版本的 model.onnx。`, 'warning');
+                        logger(`   請重新上傳「普通檔案」版本的 model_quantized.onnx。`, 'warning');
                         allSuccess = false;
                     }
                 } else {
@@ -93,7 +93,7 @@
             logger("\n=== 檔案檢查通過，嘗試載入 AI ===", 'success');
             try {
                 const segmenter = await pipeline('image-segmentation', basePath, {
-                    quantized: false, // 強制讀取 model.onnx
+                    quantized: false, // 強制讀取 model_quantized.onnx
                     progress_callback: (data) => {
                         if(data.status === 'initiate') logger(`正在下載: ${data.file} ...`);
                     }
@@ -110,3 +110,4 @@
 </script>
 </body>
 </html>
+
