@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V21 雙核心備援版 (BiRefNet/RMBG)</title>
+    <title>V22 穿牆版 (鏡像站下載)</title>
     <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvScriptLoad()" type="text/javascript"></script>
     
     <style>
@@ -20,8 +20,6 @@
         button.success:hover:not(:disabled) { background: #218838; }
         button.warning { background: #ff9800; border-color: #f57c00; color: #000; font-weight: bold;} 
         button.warning:hover:not(:disabled) { background: #fb8c00; }
-        button.danger { background: #dc3545; border-color: #dc3545; font-weight: bold;} 
-        button.danger:hover:not(:disabled) { background: #c82333; }
         
         button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
         #status { font-family: monospace; color: #aaa; margin-top: 10px; min-height: 1.2em; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
@@ -35,7 +33,6 @@
         }
         .step-box { border: 1px solid #444; padding: 15px; border-radius: 6px; background: #252525; transition: all 0.3s;}
         .step-box.active { border-color: #007bff; background: #2c3e50; }
-        .step-box.done { border-color: #28a745; opacity: 0.7; }
         .step-title { font-weight: bold; margin-bottom: 10px; display: block; color: #fff; font-size: 0.9rem; border-bottom: 1px solid #444; padding-bottom: 5px;}
         
         .upload-zone { 
@@ -93,26 +90,23 @@
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #555; transition: .4s; border-radius: 20px; }
         .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
-        input:checked + .slider { background-color: #e91e63; }
+        input:checked + .slider { background-color: #9c27b0; }
         input:checked + .slider:before { transform: translateX(20px); }
-        .ai-badge { background: linear-gradient(45deg, #e91e63, #c2185b); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; color: white; margin-left: 5px; }
+        .ai-badge { background: linear-gradient(45deg, #9c27b0, #e040fb); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; color: white; margin-left: 5px; }
         .mode-active { background: #e91e63; border-color: #c2185b; color: white; box-shadow: 0 0 8px rgba(233, 30, 99, 0.6);}
 
-        /* 進度條與錯誤選單 */
+        /* 進度條樣式 */
         #progressBarContainer { display:none; margin-top: 10px; background: #333; border-radius: 4px; height: 6px; overflow: hidden; }
-        #progressBar { width: 0%; height: 100%; background: #e91e63; transition: width 0.3s; }
-        #progressText { font-size: 0.8em; color: #e91e63; margin-top: 5px; display:none; white-space: pre-wrap;}
-        
-        #modelSelector { display:none; margin-top:10px; border-top:1px solid #444; padding-top:10px; }
-        .model-btn { display:block; width:100%; margin-bottom:5px; font-size:0.85em; }
+        #progressBar { width: 0%; height: 100%; background: #9c27b0; transition: width 0.3s; }
+        #progressText { font-size: 0.8em; color: #9c27b0; margin-top: 5px; display:none; white-space: pre-wrap;}
 
     </style>
 </head>
 <body>
 
 <div style="text-align: center;">
-    <h2>🪪 V21 雙核心備援版</h2>
-    <p class="subtitle">自動切換模型 | 解決下載失敗</p>
+    <h2>🪪 V22 穿牆版 (鏡像下載)</h2>
+    <p class="subtitle">自動切換鏡像站 | 繞過網路封鎖</p>
 </div>
 
 <div class="main-layout">
@@ -138,7 +132,7 @@
 
                 <div class="ai-toggle-container">
                     <span style="font-size: 0.9em; display:flex; align-items:center;">
-                        🤖 AI 輔助偵測 <span class="ai-badge" id="modelBadge">BiRefNet</span>
+                        🤖 AI 輔助偵測 <span class="ai-badge">Mirror</span>
                     </span>
                     <label class="switch">
                         <input type="checkbox" id="showMaskToggle" checked onchange="toggleMaskOverlay()">
@@ -148,12 +142,6 @@
                 
                 <div id="progressBarContainer"><div id="progressBar"></div></div>
                 <div id="progressText"></div>
-                
-                <div id="modelSelector">
-                    <p style="color:#ff5252; font-size:0.8em; margin:0 0 5px;">⚠️ 下載失敗？嘗試切換模型：</p>
-                    <button onclick="switchModel('rmbg')" class="model-btn warning">換成 RMBG-1.4 (較小)</button>
-                    <button onclick="switchModel('birefnet')" class="model-btn primary">換回 BiRefNet (較準)</button>
-                </div>
 
                 <div class="btn-group">
                     <button onclick="autoDetect()" id="autoBtn" class="primary" disabled>⚡ AI 偵測</button>
@@ -215,28 +203,16 @@
 <script type="module">
     import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.1'; 
     
-    // --- V21 關鍵設定 ---
+    // --- V22 關鍵修正：切換到鏡像站 + 強制單核心 ---
     env.allowLocalModels = false;
     env.useBrowserCache = true;
-    env.backends.onnx.wasm.numThreads = 1; // 強制單核心
+    env.backends.onnx.wasm.numThreads = 1;
+    
+    // 將下載源指向 hf-mirror.com (繞過封鎖)
+    env.remoteHost = 'https://hf-mirror.com/';
+    env.remotePathTemplate = '{model}/resolve/{revision}/';
 
     let segmenter = null;
-    let currentModelName = 'Xenova/birefnet-general'; // 預設 BiRefNet
-
-    // 切換模型功能
-    window.switchModel = async function(type) {
-        segmenter = null; // 清除舊的
-        document.getElementById('modelSelector').style.display = 'none';
-        
-        if (type === 'rmbg') {
-            currentModelName = 'Xenova/rmbg-1.4';
-            document.getElementById('modelBadge').innerText = "RMBG-1.4";
-        } else {
-            currentModelName = 'Xenova/birefnet-general';
-            document.getElementById('modelBadge').innerText = "BiRefNet";
-        }
-        await window.initAI();
-    }
 
     window.initAI = async function() {
         if(segmenter) return true;
@@ -244,22 +220,21 @@
         const pBar = document.getElementById('progressBar');
         const pCon = document.getElementById('progressBarContainer');
         const pTxt = document.getElementById('progressText');
-        const mSel = document.getElementById('modelSelector');
         
         pCon.style.display = 'block';
         pTxt.style.display = 'block';
-        pTxt.innerText = `🚀 正在連線 ${currentModelName}...`;
-        pTxt.style.color = "#e91e63";
+        pTxt.innerText = "🚀 連線鏡像站下載中 (RMBG-1.4)...";
 
         try {
-            segmenter = await pipeline('image-segmentation', currentModelName, {
+            // 使用 RMBG-1.4
+            segmenter = await pipeline('image-segmentation', 'Xenova/rmbg-1.4', {
                 progress_callback: (data) => {
                     if (data.status === 'progress') {
                         const percent = Math.round(data.progress * 100);
                         pBar.style.width = percent + "%";
-                        pTxt.innerText = `📥 下載中 (${currentModelName}): ${percent}%`;
+                        pTxt.innerText = `📥 鏡像下載: ${percent}%`;
                     } else if (data.status === 'done') {
-                        pTxt.innerText = "✅ 模型載入完成";
+                        pTxt.innerText = "✅ 下載完成";
                     }
                 }
             });
@@ -268,9 +243,8 @@
             return true;
         } catch (e) { 
             console.error("AI 載入失敗", e); 
-            pTxt.innerText = `❌ ${currentModelName} 下載失敗!\n請點下方按鈕切換模型試試。`;
+            pTxt.innerText = "❌ 鏡像站也連線失敗，請嘗試使用 VPN";
             pTxt.style.color = "#ff5252";
-            mSel.style.display = 'block'; // 顯示切換按鈕
             return false; 
         }
     };
