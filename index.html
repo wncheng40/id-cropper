@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V20 GitHub Pages 專用版 (強制單核模式)</title>
+    <title>V21 雙核心備援版 (BiRefNet/RMBG)</title>
     <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvScriptLoad()" type="text/javascript"></script>
     
     <style>
@@ -20,6 +20,8 @@
         button.success:hover:not(:disabled) { background: #218838; }
         button.warning { background: #ff9800; border-color: #f57c00; color: #000; font-weight: bold;} 
         button.warning:hover:not(:disabled) { background: #fb8c00; }
+        button.danger { background: #dc3545; border-color: #dc3545; font-weight: bold;} 
+        button.danger:hover:not(:disabled) { background: #c82333; }
         
         button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
         #status { font-family: monospace; color: #aaa; margin-top: 10px; min-height: 1.2em; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
@@ -91,23 +93,26 @@
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #555; transition: .4s; border-radius: 20px; }
         .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
-        input:checked + .slider { background-color: #28a745; }
+        input:checked + .slider { background-color: #e91e63; }
         input:checked + .slider:before { transform: translateX(20px); }
-        .ai-badge { background: linear-gradient(45deg, #28a745, #8bc34a); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; color: black; margin-left: 5px; }
+        .ai-badge { background: linear-gradient(45deg, #e91e63, #c2185b); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; color: white; margin-left: 5px; }
         .mode-active { background: #e91e63; border-color: #c2185b; color: white; box-shadow: 0 0 8px rgba(233, 30, 99, 0.6);}
 
-        /* 進度條樣式 */
+        /* 進度條與錯誤選單 */
         #progressBarContainer { display:none; margin-top: 10px; background: #333; border-radius: 4px; height: 6px; overflow: hidden; }
-        #progressBar { width: 0%; height: 100%; background: #28a745; transition: width 0.3s; }
-        #progressText { font-size: 0.8em; color: #28a745; margin-top: 5px; display:none; white-space: pre-wrap;}
+        #progressBar { width: 0%; height: 100%; background: #e91e63; transition: width 0.3s; }
+        #progressText { font-size: 0.8em; color: #e91e63; margin-top: 5px; display:none; white-space: pre-wrap;}
+        
+        #modelSelector { display:none; margin-top:10px; border-top:1px solid #444; padding-top:10px; }
+        .model-btn { display:block; width:100%; margin-bottom:5px; font-size:0.85em; }
 
     </style>
 </head>
 <body>
 
 <div style="text-align: center;">
-    <h2>🪪 V20 GitHub Pages 專用版</h2>
-    <p class="subtitle">強制單核心 (相容性修復) | 穩定載入</p>
+    <h2>🪪 V21 雙核心備援版</h2>
+    <p class="subtitle">自動切換模型 | 解決下載失敗</p>
 </div>
 
 <div class="main-layout">
@@ -133,7 +138,7 @@
 
                 <div class="ai-toggle-container">
                     <span style="font-size: 0.9em; display:flex; align-items:center;">
-                        🤖 AI 輔助偵測 <span class="ai-badge">V20</span>
+                        🤖 AI 輔助偵測 <span class="ai-badge" id="modelBadge">BiRefNet</span>
                     </span>
                     <label class="switch">
                         <input type="checkbox" id="showMaskToggle" checked onchange="toggleMaskOverlay()">
@@ -143,6 +148,12 @@
                 
                 <div id="progressBarContainer"><div id="progressBar"></div></div>
                 <div id="progressText"></div>
+                
+                <div id="modelSelector">
+                    <p style="color:#ff5252; font-size:0.8em; margin:0 0 5px;">⚠️ 下載失敗？嘗試切換模型：</p>
+                    <button onclick="switchModel('rmbg')" class="model-btn warning">換成 RMBG-1.4 (較小)</button>
+                    <button onclick="switchModel('birefnet')" class="model-btn primary">換回 BiRefNet (較準)</button>
+                </div>
 
                 <div class="btn-group">
                     <button onclick="autoDetect()" id="autoBtn" class="primary" disabled>⚡ AI 偵測</button>
@@ -204,14 +215,28 @@
 <script type="module">
     import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.1'; 
     
-    // --- V20 關鍵修正：相容性設定 ---
+    // --- V21 關鍵設定 ---
     env.allowLocalModels = false;
     env.useBrowserCache = true;
-    // 【極重要】GitHub Pages 不支援 SharedArrayBuffer，必須強制單核心
-    env.backends.onnx.wasm.numThreads = 1; 
-    env.backends.onnx.wasm.simd = true; // SIMD 通常沒問題，若還是掛掉可改 false
+    env.backends.onnx.wasm.numThreads = 1; // 強制單核心
 
     let segmenter = null;
+    let currentModelName = 'Xenova/birefnet-general'; // 預設 BiRefNet
+
+    // 切換模型功能
+    window.switchModel = async function(type) {
+        segmenter = null; // 清除舊的
+        document.getElementById('modelSelector').style.display = 'none';
+        
+        if (type === 'rmbg') {
+            currentModelName = 'Xenova/rmbg-1.4';
+            document.getElementById('modelBadge').innerText = "RMBG-1.4";
+        } else {
+            currentModelName = 'Xenova/birefnet-general';
+            document.getElementById('modelBadge').innerText = "BiRefNet";
+        }
+        await window.initAI();
+    }
 
     window.initAI = async function() {
         if(segmenter) return true;
@@ -219,19 +244,20 @@
         const pBar = document.getElementById('progressBar');
         const pCon = document.getElementById('progressBarContainer');
         const pTxt = document.getElementById('progressText');
+        const mSel = document.getElementById('modelSelector');
         
         pCon.style.display = 'block';
         pTxt.style.display = 'block';
-        pTxt.innerText = "🚀 初始化 AI (單核心模式)...";
+        pTxt.innerText = `🚀 正在連線 ${currentModelName}...`;
+        pTxt.style.color = "#e91e63";
 
         try {
-            // 使用 RMBG-1.4 (較輕量穩定)
-            segmenter = await pipeline('image-segmentation', 'Xenova/rmbg-1.4', {
+            segmenter = await pipeline('image-segmentation', currentModelName, {
                 progress_callback: (data) => {
                     if (data.status === 'progress') {
                         const percent = Math.round(data.progress * 100);
                         pBar.style.width = percent + "%";
-                        pTxt.innerText = `📥 下載模型: ${percent}%`;
+                        pTxt.innerText = `📥 下載中 (${currentModelName}): ${percent}%`;
                     } else if (data.status === 'done') {
                         pTxt.innerText = "✅ 模型載入完成";
                     }
@@ -242,8 +268,9 @@
             return true;
         } catch (e) { 
             console.error("AI 載入失敗", e); 
-            pTxt.innerText = "❌ AI 錯誤：" + e.message;
+            pTxt.innerText = `❌ ${currentModelName} 下載失敗!\n請點下方按鈕切換模型試試。`;
             pTxt.style.color = "#ff5252";
+            mSel.style.display = 'block'; // 顯示切換按鈕
             return false; 
         }
     };
@@ -255,9 +282,9 @@
         }
         
         document.getElementById('progressText').style.display = 'block';
-        document.getElementById('progressText').innerText = "🧠 AI 運算中 (單核可能稍慢)...";
+        document.getElementById('progressText').innerText = "🧠 AI 運算中...";
         
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 60000)); // 放寬到 60秒
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 60000));
         const processPromise = async () => {
             const output = await segmenter(dataUrl);
             const maskBitmap = await output.mask.toCanvas();
