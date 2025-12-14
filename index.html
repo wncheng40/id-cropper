@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V30 終極指定版</title>
+    <title>V31 終極 CDN 版</title>
     <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvScriptLoad()" type="text/javascript"></script>
     
     <style>
@@ -33,7 +33,6 @@
         }
         .step-box { border: 1px solid #444; padding: 15px; border-radius: 6px; background: #252525; transition: all 0.3s;}
         .step-box.active { border-color: #007bff; background: #2c3e50; }
-        .step-box.done { border-color: #28a745; opacity: 0.7; }
         .step-title { font-weight: bold; margin-bottom: 10px; display: block; color: #fff; font-size: 0.9rem; border-bottom: 1px solid #444; padding-bottom: 5px;}
         
         .upload-zone { 
@@ -86,21 +85,27 @@
         .btn-group { display: flex; gap: 8px; }
         .btn-group button { flex: 1; }
         
-        .ai-toggle-container { margin-top: 10px; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 4px; border: 1px solid #444; }
-        .ai-options { display: flex; flex-direction: column; gap: 8px; margin-top: 5px;}
-        select { background: #333; color: white; padding: 5px; border: 1px solid #555; border-radius: 4px; width: 100%; }
+        .ai-toggle-container { margin-top: 10px; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 4px; border: 1px solid #444; display: flex; align-items: center; justify-content: space-between; }
+        .switch { position: relative; display: inline-block; width: 40px; height: 20px; margin-left: 10px;}
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #555; transition: .4s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #03a9f4; }
+        input:checked + .slider:before { transform: translateX(20px); }
+        .ai-badge { background: linear-gradient(45deg, #03a9f4, #4fc3f7); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; color: black; margin-left: 5px; }
+        .mode-active { background: #e91e63; border-color: #c2185b; color: white; box-shadow: 0 0 8px rgba(233, 30, 99, 0.6);}
 
         #progressBarContainer { display:none; margin-top: 10px; background: #333; border-radius: 4px; height: 6px; overflow: hidden; }
-        #progressBar { width: 0%; height: 100%; background: #00bcd4; transition: width 0.3s; }
-        #progressText { font-size: 0.8em; color: #00bcd4; margin-top: 5px; display:none; white-space: pre-wrap;}
+        #progressBar { width: 0%; height: 100%; background: #03a9f4; transition: width 0.3s; }
+        #progressText { font-size: 0.8em; color: #4fc3f7; margin-top: 5px; display:none; white-space: pre-wrap;}
 
     </style>
 </head>
 <body>
 
 <div style="text-align: center;">
-    <h2>🪪 V30 終極指定版</h2>
-    <p class="subtitle">手動指定檔名 | 暴力清除快取</p>
+    <h2>🪪 V31 終極 CDN 版</h2>
+    <p class="subtitle">jsDelivr Global CDN | 繞過網路限制</p>
 </div>
 
 <div class="main-layout">
@@ -125,15 +130,13 @@
                 </div>
 
                 <div class="ai-toggle-container">
-                    <span style="font-size: 0.9em; font-weight: bold;">🤖 AI 設定</span>
-                    <div class="ai-options">
-                        <label style="font-size: 0.8em; color: #aaa;">GitHub 上的模型檔名：</label>
-                        <select id="modelFilename">
-                            <option value="model.onnx">model.onnx</option>
-                            <option value="model_quantized.onnx">model_quantized.onnx</option>
-                        </select>
-                        <button onclick="window.initAI()" class="primary" id="loadAiBtn" style="width:100%; margin-top:5px;">🚀 載入模型</button>
-                    </div>
+                    <span style="font-size: 0.9em; display:flex; align-items:center;">
+                        🤖 AI 輔助偵測 <span class="ai-badge">CDN</span>
+                    </span>
+                    <label class="switch">
+                        <input type="checkbox" id="showMaskToggle" checked onchange="toggleMaskOverlay()">
+                        <span class="slider"></span>
+                    </label>
                 </div>
                 
                 <div id="progressBarContainer"><div id="progressBar"></div></div>
@@ -199,85 +202,76 @@
 <script type="module">
     import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.1'; 
     
-    // V30 設定: 允許遠端連線 (因為 GitHub Pages 算遠端)
+    // --- V31 關鍵設定 ---
     env.allowLocalModels = false; 
     env.allowRemoteModels = true; 
-    env.useBrowserCache = false; // 禁止快取
+    
+    // 強制使用 jsDelivr CDN 讀取您的 Repo
+    // 網址結構: https://cdn.jsdelivr.net/gh/使用者/專案@main/model/
+    env.remoteHost = "https://cdn.jsdelivr.net/gh/wncheng40/id-cropper@main/";
+    env.remotePathTemplate = "model/{file}"; 
+    
+    env.useBrowserCache = true;
     env.backends.onnx.wasm.numThreads = 1;
 
     let segmenter = null;
 
-    // 工具：取得目前網頁的根目錄
-    function getModelPath() {
-        let path = window.location.href;
-        if (path.endsWith('index.html')) {
-            path = path.substring(0, path.length - 'index.html'.length);
-        }
-        if (!path.endsWith('/')) path += '/';
-        return path + 'model/';
-    }
-
     window.initAI = async function() {
+        if(segmenter) return true;
+        
         const pBar = document.getElementById('progressBar');
         const pCon = document.getElementById('progressBarContainer');
         const pTxt = document.getElementById('progressText');
-        const loadBtn = document.getElementById('loadAiBtn');
-        const modelPath = getModelPath();
         
-        // 取得使用者選的檔名
-        const selectedFilename = document.getElementById('modelFilename').value;
-        const isQuantized = selectedFilename.includes('quantized');
-
-        loadBtn.disabled = true;
         pCon.style.display = 'block';
         pTxt.style.display = 'block';
-        pTxt.innerText = `🔍 嘗試讀取 ${selectedFilename} ...\n路徑: ${modelPath}`;
+        pTxt.innerText = `🔍 連線 jsDelivr CDN (GitHub Mirror)...`;
 
         try {
-            // 隨機數破除快取
-            const cacheBuster = "?t=" + new Date().getTime(); 
+            // 策略 A: 嘗試讀取 model_quantized.onnx (標準名)
+            // 因為不確定您 GitHub 檔名最後改了沒，我們用 try-catch 嘗試兩種
             
-            // 手動 fetch 檢查檔案是否存在
-            const checkRes = await fetch(modelPath + selectedFilename + cacheBuster, { method: 'HEAD' });
-            if(!checkRes.ok) {
-                throw new Error(`找不到檔案 ${selectedFilename} (HTTP ${checkRes.status})`);
+            try {
+                // 嘗試 1: 預設量化 (找 model_quantized.onnx)
+                segmenter = await pipeline('image-segmentation', 'Xenova/rmbg-1.4', { // 這裡的模型名只是個 placeholder，重點是上面的 remoteHost
+                    quantized: true, 
+                    progress_callback: (data) => updateProgress(data, pBar, pTxt)
+                });
+            } catch (err1) {
+                console.warn("量化檔名失敗，嘗試 model.onnx...");
+                // 嘗試 2: 強制非量化檔名 (找 model.onnx)
+                segmenter = await pipeline('image-segmentation', 'Xenova/rmbg-1.4', {
+                    quantized: false, 
+                    progress_callback: (data) => updateProgress(data, pBar, pTxt)
+                });
             }
 
-            pTxt.innerText = "✅ 檔案存在，開始載入引擎...";
-
-            // 建立 pipeline
-            segmenter = await pipeline('image-segmentation', modelPath, {
-                quantized: isQuantized, // 關鍵：根據檔名決定是否開啟量化模式
-                progress_callback: (data) => {
-                    if (data.status === 'progress') {
-                        const percent = Math.round(data.progress * 100);
-                        pBar.style.width = percent + "%";
-                        pTxt.innerText = `📥 載入中: ${percent}%`;
-                    } else if (data.status === 'done') {
-                        pTxt.innerText = "✅ 載入完成";
-                    }
-                }
-            });
-            
-            pTxt.innerText = "✅ AI 準備就緒！請點擊『⚡ AI 偵測』";
-            pTxt.style.color = "#4caf50";
-            document.getElementById('autoBtn').disabled = false;
-            setTimeout(() => { pCon.style.display = 'none'; }, 2000);
+            pTxt.innerText = "✅ AI 準備就緒";
+            setTimeout(() => { pCon.style.display = 'none'; pTxt.style.display = 'none'; }, 2000);
             return true;
 
         } catch (e) { 
             console.error("AI 載入失敗", e); 
-            pTxt.innerText = "❌ 失敗：" + e.message + "\n請確認 GitHub 檔名是否與選單一致！";
+            pTxt.innerText = "❌ 載入失敗：" + e.message;
             pTxt.style.color = "#ff5252";
-            loadBtn.disabled = false;
             return false; 
         }
     };
 
+    function updateProgress(data, pBar, pTxt) {
+        if (data.status === 'progress') {
+            const percent = Math.round(data.progress * 100);
+            pBar.style.width = percent + "%";
+            pTxt.innerText = `📥 下載中: ${percent}%`;
+        } else if (data.status === 'done') {
+            pTxt.innerText = "✅ 下載完成";
+        }
+    }
+
     window.runAIRemoval = async function(dataUrl, width, height) {
         if (!segmenter) {
             const success = await window.initAI();
-            if (!success) throw new Error("AI 模型未載入");
+            if (!success) throw new Error("AI 模型無法載入");
         }
         
         document.getElementById('progressText').style.display = 'block';
@@ -358,6 +352,7 @@
                 document.getElementById('systemLoading').style.color = "#4caf50";
                 uploadBox.classList.add('ready');
                 document.getElementById('uploadText').innerText = "📷 點擊上傳 / 拖曳圖片";
+                if(window.initAI) window.initAI();
             }
         }, 200);
     }
@@ -379,10 +374,10 @@
             ctxOverlay.clearRect(0, 0, maskOverlay.width, maskOverlay.height);
             document.getElementById('step1').classList.remove('active'); document.getElementById('step1').classList.add('done');
             activateStep(document.getElementById('step2'));
-            document.getElementById('autoBtn').disabled = true; // 先禁用，等按載入模型
+            document.getElementById('autoBtn').disabled = false;
             document.getElementById('drawBtn').disabled = false;
             resetView();
-            log("📷 載入完成，請先點擊『🚀 載入模型』");
+            log("📷 載入完成，可滾輪縮放");
         }
     }
 
