@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V19 線上旗艦版 (GitHub Pages 專用)</title>
+    <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvScriptLoad()" type="text/javascript"></script>
+    
+    <style>
+        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; height: 100vh; box-sizing: border-box; overflow: hidden; }
+        h2 { color: #fff; margin: 0 0 5px 0; font-size: 1.5rem; }
+        .subtitle { color: #888; font-size: 0.9em; margin-bottom: 15px; }
+        
+        button { background: #333; color: white; border: 1px solid #555; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.2s; user-select: none;}
+        button:hover:not(:disabled) { background: #444; border-color: #777; }
+        button:active:not(:disabled) { transform: translateY(1px); }
+        button.primary { background: #007bff; border-color: #007bff; font-weight: bold;}
+        button.primary:hover:not(:disabled) { background: #0056b3; }
+        button.success { background: #28a745; border-color: #28a745; font-weight: bold;}
+        button.success:hover:not(:disabled) { background: #218838; }
+        button.warning { background: #ff9800; border-color: #f57c00; color: #000; font-weight: bold;} 
+        button.warning:hover:not(:disabled) { background: #fb8c00; }
+        button.info { background: #17a2b8; border-color: #17a2b8; font-weight: bold;}
+        
+        button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
+        #status { font-family: monospace; color: #aaa; margin-top: 10px; min-height: 1.2em; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+        
+        .main-layout { display: flex; gap: 20px; height: calc(100% - 70px); align-items: flex-start; }
+        
+        .left-panel { 
+            flex: 0 0 320px; background: #1e1e1e; padding: 20px; border-radius: 8px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 15px; 
+            height: 100%; overflow-y: auto; box-sizing: border-box; border: 1px solid #333;
+        }
+        .step-box { border: 1px solid #444; padding: 15px; border-radius: 6px; background: #252525; transition: all 0.3s;}
+        .step-box.active { border-color: #007bff; background: #2c3e50; }
+        .step-title { font-weight: bold; margin-bottom: 10px; display: block; color: #fff; font-size: 0.9rem; border-bottom: 1px solid #444; padding-bottom: 5px;}
+        
+        .upload-zone { 
+            border: 2px dashed #555; padding: 25px 10px; text-align: center; border-radius: 6px; 
+            cursor: pointer; transition: all 0.2s; background: rgba(255,255,255,0.02); color: #aaa; font-size: 0.9em;
+            pointer-events: none; opacity: 0.5;
+        }
+        .upload-zone.ready { pointer-events: auto; opacity: 1; border-color: #007bff; color: #eee; }
+        .upload-zone:hover { background: rgba(0,123,255,0.05); }
+
+        .right-panel { flex: 1; display: flex; gap: 20px; height: 100%; min-width: 0; }
+        .canvas-wrapper { 
+            flex: 1; background: #000; padding: 2px; border-radius: 4px; border: 1px solid #333;
+            display: flex; flex-direction: column; position: relative; min-width: 0; overflow: hidden;
+        }
+        .canvas-header { 
+            background: #1e1e1e; padding: 8px 12px; font-weight: bold; font-size: 0.85rem; 
+            display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; z-index: 5;
+        }
+        
+        .viewport {
+            flex: 1; background: #111; overflow: hidden; position: relative; cursor: grab;
+            background-image: radial-gradient(#222 1px, transparent 1px); background-size: 20px 20px;
+        }
+        .viewport.grabbing { cursor: grabbing; }
+        .viewport.crosshair { cursor: crosshair; }
+
+        #transformLayer { transform-origin: 0 0; position: absolute; top: 0; left: 0; will-change: transform; }
+        .relative-img-wrap { position: relative; line-height: 0; box-shadow: 0 0 30px rgba(0,0,0,0.8); }
+        canvas { display: block; }
+
+        #maskOverlay { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            pointer-events: none; opacity: 0.6; z-index: 2;
+        }
+
+        #manualAdjustLayer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: none; }
+        #highlightPolygon { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; opacity: 0; transition: opacity 0.3s; }
+        #highlightPolygon polygon { fill: rgba(0, 255, 0, 0.1); stroke: #00ff00; stroke-width: 2; vector-effect: non-scaling-stroke; }
+        #tempSelectionBox { position: absolute; border: 1px dashed #ff0055; background: rgba(255, 0, 85, 0.1); pointer-events: none; display: none; z-index: 20; }
+        
+        .corner-point {
+            position: absolute; width: 16px; height: 16px; 
+            background: rgba(255, 50, 50, 0.8); border: 2px solid #fff; border-radius: 50%;
+            transform: translate(-50%, -50%); cursor: grab; pointer-events: auto; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 30; transition: transform 0.1s, background 0.1s;
+        }
+        .corner-point:hover { background: #ff0000; z-index: 40; border-color: #ffff00; transform: translate(-50%, -50%) scale(1.3);}
+        
+        .zoom-controls { position: absolute; bottom: 15px; right: 15px; display: flex; gap: 5px; z-index: 50; }
+        .zoom-btn { background: rgba(0,0,0,0.7); color: white; border: 1px solid #555; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        .zoom-btn:hover { background: rgba(0,0,0,0.9); border-color: #888; }
+        #canvasOutput { width: 100%; height: 100%; object-fit: contain; background: #000; }
+        .btn-group { display: flex; gap: 8px; }
+        .btn-group button { flex: 1; }
+        
+        .ai-toggle-container { margin-top: 10px; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 4px; border: 1px solid #444; display: flex; align-items: center; justify-content: space-between; }
+        .switch { position: relative; display: inline-block; width: 40px; height: 20px; margin-left: 10px;}
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #555; transition: .4s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #00bcd4; }
+        input:checked + .slider:before { transform: translateX(20px); }
+        .ai-badge { background: linear-gradient(45deg, #00bcd4, #00e5ff); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; color: black; margin-left: 5px; }
+        .mode-active { background: #e91e63; border-color: #c2185b; color: white; box-shadow: 0 0 8px rgba(233, 30, 99, 0.6);}
+
+        /* 進度條樣式 */
+        #progressBarContainer { display:none; margin-top: 10px; background: #333; border-radius: 4px; height: 6px; overflow: hidden; }
+        #progressBar { width: 0%; height: 100%; background: #00bcd4; transition: width 0.3s; }
+        #progressText { font-size: 0.8em; color: #00bcd4; margin-top: 5px; display:none; white-space: pre-wrap;}
+
+    </style>
+</head>
+<body>
+
+<div style="text-align: center;">
+    <h2>🪪 V19 線上旗艦版</h2>
+    <p class="subtitle">GitHub Pages 專用 | 自動快取模型 | 雲端相容</p>
+</div>
+
+<div class="main-layout">
+    <div class="left-panel">
+        <div id="step1" class="step-box active">
+            <span class="step-title">1. 上傳照片</span>
+            <div id="systemLoading" style="text-align:center; color:#ffd700; margin-bottom:10px; font-size:0.85em;">
+                ⏳ 正在初始化影像引擎...
+            </div>
+            <input type="file" id="fileInput" accept="image/*" style="display:none">
+            <div class="upload-zone" onclick="document.getElementById('fileInput').click()" id="uploadBox">
+                <span id="uploadText">📷 請稍候...</span>
+            </div>
+        </div>
+
+        <div id="step2" class="step-box" style="pointer-events: none; opacity: 0.5; flex: 1; display:flex; flex-direction:column;">
+            <span class="step-title">2. 編輯與輸出</span>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div class="btn-group">
+                    <button onclick="rotateSource(-90)" class="info" title="向左旋轉">↺ 左轉</button>
+                    <button onclick="rotateSource(90)" class="info" title="向右旋轉">↻ 右轉</button>
+                </div>
+
+                <div class="ai-toggle-container">
+                    <span style="font-size: 0.9em; display:flex; align-items:center;">
+                        🤖 AI 輔助偵測 <span class="ai-badge">V19</span>
+                    </span>
+                    <label class="switch">
+                        <input type="checkbox" id="showMaskToggle" checked onchange="toggleMaskOverlay()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                
+                <div id="progressBarContainer"><div id="progressBar"></div></div>
+                <div id="progressText"></div>
+
+                <div class="btn-group">
+                    <button onclick="autoDetect()" id="autoBtn" class="primary" disabled>⚡ AI 偵測</button>
+                    <button onclick="toggleDrawMode()" id="drawBtn" class="warning" disabled>🖍️ 手動畫框</button>
+                </div>
+
+                <button onclick="resetView()" class="zoom-reset" style="font-size: 12px; padding: 5px;">🔍 重置視角 (Fit Screen)</button>
+                
+                <div id="manualControls" style="display:block; border-top: 1px solid #444; padding-top: 10px; margin-top: 5px;">
+                    <p id="guideText" style="font-size:0.85em; color:#ddd; margin: 0 0 8px;">👇 微調紅點位置：</p>
+                    <button onclick="applyManualCrop()" id="applyBtn" class="success" style="width:100%">✅ 應用裁切</button>
+                </div>
+                
+                <div style="margin-top: auto;">
+                    <button onclick="downloadResult()" id="dlBtn" disabled style="width:100%">📥 下載結果</button>
+                </div>
+            </div>
+            <div id="status"></div>
+        </div>
+    </div>
+
+    <div class="right-panel">
+        <div class="canvas-wrapper">
+            <div class="canvas-header">
+                <span>📍 原始影像 (紅色 = AI 辨識區域)</span>
+                <small id="modeIndicator" style="color:#aaa;">滾輪縮放 / 拖曳背景移動</small>
+            </div>
+            <div class="viewport" id="viewport">
+                <div id="transformLayer">
+                    <div class="relative-img-wrap" id="imgWrap">
+                        <canvas id="canvasInput"></canvas>
+                        <canvas id="maskOverlay"></canvas>
+                        <svg id="highlightPolygon"><polygon points=""></polygon></svg>
+                        <div id="tempSelectionBox"></div>
+                        <div id="manualAdjustLayer">
+                            <div class="corner-point" id="cp-tl"></div>
+                            <div class="corner-point" id="cp-tr"></div>
+                            <div class="corner-point" id="cp-br"></div>
+                            <div class="corner-point" id="cp-bl"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="zoom-controls">
+                    <div class="zoom-btn" onclick="zoomIn()">+</div>
+                    <div class="zoom-btn" onclick="zoomOut()">-</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="canvas-wrapper" style="flex: 0 0 35%;">
+            <div class="canvas-header">✂️ 裁切結果</div>
+            <div style="flex:1; background:#000; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+                <canvas id="canvasOutput"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.1'; 
+    
+    // V19 Web 最佳化：開啟快取，讓下次開啟秒開
+    env.allowLocalModels = false;
+    env.useBrowserCache = true; 
+
+    let segmenter = null;
+
+    window.initAI = async function() {
+        if(segmenter) return true;
+        
+        const pBar = document.getElementById('progressBar');
+        const pCon = document.getElementById('progressBarContainer');
+        const pTxt = document.getElementById('progressText');
+        
+        pCon.style.display = 'block';
+        pTxt.style.display = 'block';
+        pTxt.innerText = "🚀 正在連線 Hugging Face (首次需下載 80MB)...";
+
+        try {
+            segmenter = await pipeline('image-segmentation', 'Xenova/rmbg-1.4', {
+                progress_callback: (data) => {
+                    if (data.status === 'progress') {
+                        const percent = Math.round(data.progress * 100);
+                        pBar.style.width = percent + "%";
+                        pTxt.innerText = `📥 下載中: ${percent}% (${data.file})`;
+                    } else if (data.status === 'done') {
+                        pTxt.innerText = "✅ 下載完成，初始化中...";
+                    }
+                }
+            });
+            pTxt.innerText = "✅ AI 準備就緒";
+            setTimeout(() => { pCon.style.display = 'none'; pTxt.style.display = 'none'; }, 2000);
+            return true;
+        } catch (e) { 
+            console.error("AI 載入失敗", e); 
+            pTxt.innerText = "❌ AI 載入失敗！\n如果長時間卡住，請檢查網路連線。";
+            pTxt.style.color = "#ff5252";
+            return false; 
+        }
+    };
+
+    window.runAIRemoval = async function(dataUrl, width, height) {
+        if (!segmenter) {
+            const success = await window.initAI();
+            if (!success) throw new Error("AI 模型無法載入");
+        }
+        
+        document.getElementById('progressText').style.display = 'block';
+        document.getElementById('progressText').innerText = "🧠 AI 運算中...";
+        
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 30000));
+        const processPromise = async () => {
+            const output = await segmenter(dataUrl);
+            const maskBitmap = await output.mask.toCanvas();
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(maskBitmap, 0, 0, width, height);
+            
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const val = data[i]; 
+                if (val > 10) { 
+                    data[i] = 255; data[i+1] = 255; data[i+2] = 255; data[i+3] = 255;
+                } else {
+                    data[i] = 0; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255;
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+            return canvas;
+        };
+
+        try {
+            const result = await Promise.race([processPromise(), timeoutPromise]);
+            document.getElementById('progressText').style.display = 'none';
+            return result;
+        } catch (error) {
+            document.getElementById('progressText').innerText = "⚠️ 錯誤：" + error.message;
+            throw error;
+        }
+    }
+</script>
+
+<script>
+    let imgElement = new Image();
+    let isCvLoaded = false;
+    let currentCorners = { tl: {x:0,y:0}, tr: {x:0,y:0}, br: {x:0,y:0}, bl: {x:0,y:0} };
+    let scale = 1, panX = 0, panY = 0, isPanning = false, startPanX = 0, startPanY = 0;
+    let isDrawingMode = false, isDrawing = false, drawStartX = 0, drawStartY = 0, activePoint = null;
+
+    const viewport = document.getElementById('viewport');
+    const transformLayer = document.getElementById('transformLayer');
+    const canvasInput = document.getElementById('canvasInput');
+    const maskOverlay = document.getElementById('maskOverlay');
+    const canvasOutput = document.getElementById('canvasOutput');
+    const ctxInput = canvasInput.getContext('2d');
+    const ctxOverlay = maskOverlay.getContext('2d');
+    const highlightPolygon = document.getElementById('highlightPolygon');
+    const polyShape = highlightPolygon.querySelector('polygon');
+    const manualAdjustLayer = document.getElementById('manualAdjustLayer');
+    const imgWrap = document.getElementById('imgWrap');
+    const tempSelectionBox = document.getElementById('tempSelectionBox');
+    const cornerPoints = document.querySelectorAll('.corner-point');
+    const statusText = document.getElementById('status');
+    const modeIndicator = document.getElementById('modeIndicator');
+    const uploadBox = document.getElementById('uploadBox');
+
+    function log(msg, type='') {
+        statusText.innerText = msg;
+        statusText.style.color = type === 'error' ? '#ff5252' : (type === 'warning' ? '#ffc107' : type === 'success' ? '#4caf50' : '#aaa');
+    }
+
+    function onOpenCvScriptLoad() {
+        let checkInterval = setInterval(() => {
+            if (typeof cv !== 'undefined' && cv.Mat) {
+                clearInterval(checkInterval);
+                isCvLoaded = true;
+                document.getElementById('systemLoading').innerText = "✅ 影像引擎就緒";
+                document.getElementById('systemLoading').style.color = "#4caf50";
+                uploadBox.classList.add('ready');
+                document.getElementById('uploadText').innerText = "📷 點擊上傳 / 拖曳圖片";
+                if(window.initAI) window.initAI();
+            }
+        }, 200);
+    }
+
+    document.getElementById('fileInput').addEventListener('change', (e) => handleFile(e.target.files[0]));
+    uploadBox.addEventListener('dragover', (e) => { e.preventDefault(); if(isCvLoaded) uploadBox.style.borderColor = '#007bff'; });
+    uploadBox.addEventListener('dragleave', (e) => { e.preventDefault(); if(isCvLoaded) uploadBox.style.borderColor = '#555'; });
+    uploadBox.addEventListener('drop', (e) => { e.preventDefault(); if(isCvLoaded) { uploadBox.style.borderColor = '#555'; handleFile(e.dataTransfer.files[0]); }});
+
+    function handleFile(file) {
+        if(!file) return;
+        let url = URL.createObjectURL(file);
+        imgElement.src = url;
+        imgElement.onload = function() {
+            refreshCanvasInput();
+            resetCorners();
+            highlightPolygon.style.opacity = '0';
+            manualAdjustLayer.style.display = 'block';
+            ctxOverlay.clearRect(0, 0, maskOverlay.width, maskOverlay.height);
+            document.getElementById('step1').classList.remove('active'); document.getElementById('step1').classList.add('done');
+            activateStep(document.getElementById('step2'));
+            document.getElementById('autoBtn').disabled = false;
+            document.getElementById('drawBtn').disabled = false;
+            resetView();
+            log("📷 載入完成，可滾輪縮放");
+        }
+    }
+
+    function activateStep(el) { el.style.pointerEvents = "auto"; el.style.opacity = "1"; el.classList.add('active'); }
+
+    function refreshCanvasInput() {
+        canvasInput.width = imgElement.width;
+        canvasInput.height = imgElement.height;
+        maskOverlay.width = imgElement.width;
+        maskOverlay.height = imgElement.height;
+        ctxInput.drawImage(imgElement, 0, 0);
+    }
+
+    function rotateSource(degrees) {
+        if (!imgElement.src) return;
+        const tempCanvas = document.createElement('canvas');
+        const ctx = tempCanvas.getContext('2d');
+        const w = imgElement.width; const h = imgElement.height;
+        tempCanvas.width = h; tempCanvas.height = w;
+        ctx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
+        ctx.rotate(degrees * Math.PI / 180);
+        ctx.drawImage(imgElement, -w / 2, -h / 2);
+        imgElement.src = tempCanvas.toDataURL();
+        ctxOverlay.clearRect(0, 0, maskOverlay.width, maskOverlay.height);
+    }
+
+    function updateTransform() { transformLayer.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`; }
+    function resetView() {
+        const vW = viewport.clientWidth; const vH = viewport.clientHeight;
+        const iW = imgElement.width; const iH = imgElement.height;
+        scale = Math.min((vW - 40) / iW, (vH - 40) / iH, 1);
+        panX = (vW - iW * scale) / 2; panY = (vH - iH * scale) / 2;
+        updateTransform();
+    }
+    function zoomIn() { scale *= 1.2; updateTransform(); }
+    function zoomOut() { scale /= 1.2; updateTransform(); }
+    
+    viewport.addEventListener('wheel', (e) => { e.preventDefault(); if (e.deltaY < 0) scale *= 1.1; else scale /= 1.1; updateTransform(); });
+    
+    function toggleDrawMode() {
+        isDrawingMode = !isDrawingMode;
+        const btn = document.getElementById('drawBtn');
+        if (isDrawingMode) {
+            btn.classList.add('mode-active');
+            btn.innerText = "❌ 結束畫框";
+            viewport.classList.add('crosshair');
+            modeIndicator.innerText = "模式：請在畫面上拖曳拉框";
+            modeIndicator.style.color = "#ff3d00";
+            log("🖍️ 請按住滑鼠左鍵畫框");
+        } else {
+            btn.classList.remove('mode-active');
+            btn.innerText = "🖍️ 手動畫框";
+            viewport.classList.remove('crosshair');
+            modeIndicator.innerText = "模式：滾輪縮放 / 拖曳背景移動";
+            modeIndicator.style.color = "#aaa";
+            tempSelectionBox.style.display = 'none';
+        }
+    }
+
+    viewport.addEventListener('mousedown', (e) => {
+        if (isDrawingMode && !e.target.classList.contains('corner-point')) {
+            isDrawing = true;
+            const rect = imgWrap.getBoundingClientRect();
+            drawStartX = (e.clientX - rect.left) / scale;
+            drawStartY = (e.clientY - rect.top) / scale;
+            tempSelectionBox.style.left = drawStartX + 'px';
+            tempSelectionBox.style.top = drawStartY + 'px';
+            tempSelectionBox.style.width = '0px';
+            tempSelectionBox.style.height = '0px';
+            tempSelectionBox.style.display = 'block';
+            e.stopPropagation();
+            return;
+        }
+        if (!e.target.classList.contains('corner-point')) {
+            isPanning = true; startPanX = e.clientX - panX; startPanY = e.clientY - panY; viewport.classList.add('grabbing');
+        }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (isDrawingMode && isDrawing) {
+            const rect = imgWrap.getBoundingClientRect();
+            let currX = (e.clientX - rect.left) / scale;
+            let currY = (e.clientY - rect.top) / scale;
+            let x = Math.min(drawStartX, currX); let y = Math.min(drawStartY, currY);
+            let w = Math.abs(currX - drawStartX); let h = Math.abs(currY - drawStartY);
+            x = Math.max(0, x); y = Math.max(0, y);
+            w = Math.min(w, imgElement.width - x); h = Math.min(h, imgElement.height - y);
+            tempSelectionBox.style.left = x + 'px'; tempSelectionBox.style.top = y + 'px';
+            tempSelectionBox.style.width = w + 'px'; tempSelectionBox.style.height = h + 'px';
+            return;
+        }
+        if (isPanning) { e.preventDefault(); panX = e.clientX - startPanX; panY = e.clientY - startPanY; updateTransform(); }
+    });
+
+    window.addEventListener('mouseup', () => {
+        if (isDrawingMode && isDrawing) {
+            isDrawing = false;
+            const w = parseFloat(tempSelectionBox.style.width); const h = parseFloat(tempSelectionBox.style.height);
+            const x = parseFloat(tempSelectionBox.style.left); const y = parseFloat(tempSelectionBox.style.top);
+            if (w > 20 && h > 20) {
+                currentCorners = { tl: {x:x, y:y}, tr: {x:x+w, y:y}, br: {x:x+w, y:y+h}, bl: {x:x, y:y+h} };
+                updateManualPointsUI(); highlightPolygon.style.opacity = '1'; toggleDrawMode(); applyManualCrop(true);
+            }
+            tempSelectionBox.style.display = 'none';
+        }
+        isPanning = false; viewport.classList.remove('grabbing');
+    });
+
+    function toggleMaskOverlay() {
+        maskOverlay.style.display = document.getElementById('showMaskToggle').checked ? 'block' : 'none';
+    }
+
+    async function autoDetect() {
+        if (!isCvLoaded) return;
+        if(isDrawingMode) toggleDrawMode();
+
+        log("🧠 AI 分析中...");
+        document.getElementById('autoBtn').disabled = true;
+
+        setTimeout(async () => {
+            try {
+                let srcMat;
+                if (window.runAIRemoval) {
+                    try {
+                        const dataUrl = canvasInput.toDataURL("image/png");
+                        const aiCanvas = await window.runAIRemoval(dataUrl, canvasInput.width, canvasInput.height);
+                        
+                        ctxOverlay.clearRect(0, 0, maskOverlay.width, maskOverlay.height);
+                        ctxOverlay.globalAlpha = 0.5;
+                        ctxOverlay.drawImage(aiCanvas, 0, 0);
+                        const oData = ctxOverlay.getImageData(0, 0, maskOverlay.width, maskOverlay.height);
+                        for(let i=0; i<oData.data.length; i+=4) {
+                            if(oData.data[i] > 100) { 
+                                oData.data[i] = 255; oData.data[i+1] = 0; oData.data[i+2] = 0; oData.data[i+3] = 128;
+                            } else {
+                                oData.data[i+3] = 0;
+                            }
+                        }
+                        ctxOverlay.putImageData(oData, 0, 0);
+                        
+                        srcMat = cv.imread(aiCanvas);
+                        log("🤖 AI 偵測完成 (紅色區域)", "info");
+                    } catch (e) {
+                        console.error(e);
+                        log("❌ AI 失敗/超時，轉傳統模式", "error");
+                        srcMat = cv.imread(canvasInput);
+                    }
+                }
+
+                let gray = new cv.Mat(), debugMat = new cv.Mat();
+                cv.cvtColor(srcMat, gray, cv.COLOR_RGBA2GRAY, 0);
+                cv.threshold(gray, debugMat, 20, 255, cv.THRESH_BINARY);
+
+                let contours = new cv.MatVector();
+                cv.findContours(debugMat, contours, new cv.Mat(), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+                
+                let maxArea = 0, bestCnt = null;
+                const minArea = (srcMat.cols * srcMat.rows) * 0.01;
+
+                for (let i = 0; i < contours.size(); ++i) {
+                    let cnt = contours.get(i);
+                    let area = cv.contourArea(cnt);
+                    if (area > maxArea && area > minArea) {
+                        maxArea = area;
+                        bestCnt = cnt;
+                    }
+                }
+
+                if (bestCnt) {
+                    let rect = cv.minAreaRect(bestCnt);
+                    let w = rect.size.width; let h = rect.size.height;
+                    let ratio = Math.max(w,h) / Math.min(w,h);
+                    
+                    let vertices = cv.RotatedRect.points(rect);
+                    let ptsSource = [];
+                    for(let i=0; i<4; i++) ptsSource.push(vertices[i]);
+                    ptsSource.sort((a,b) => a.y - b.y);
+                    let top = ptsSource.slice(0,2).sort((a,b) => a.x - b.x);
+                    let bottom = ptsSource.slice(2,4).sort((a,b) => a.x - b.x);
+
+                    if (ratio < 1.4) {
+                        log("⚠️ 偵測到倒影，自動校正", "warning");
+                        let cutRatio = 0.3;
+                        bottom[0].y -= (bottom[0].y - top[0].y) * cutRatio;
+                        bottom[1].y -= (bottom[1].y - top[1].y) * cutRatio;
+                    } else {
+                        log("✅ 偵測成功", "success");
+                    }
+                    
+                    currentCorners = { tl: top[0], tr: top[1], br: bottom[1], bl: bottom[0] };
+                    highlightPolygon.style.opacity = '1';
+                    applyManualCrop(true);
+                } else {
+                    log("⚠️ 未偵測到物體", "warning");
+                }
+
+                updateManualPointsUI();
+                srcMat.delete(); gray.delete(); debugMat.delete(); contours.delete();
+                document.getElementById('autoBtn').disabled = false;
+
+            } catch (err) { 
+                console.error(err); 
+                log("❌ 錯誤: " + err, "error"); 
+                document.getElementById('autoBtn').disabled = false;
+            }
+        }, 50);
+    }
+
+    cornerPoints.forEach(point => { point.addEventListener('mousedown', (e) => { if(isDrawingMode) return; activePoint = e.target; e.stopPropagation(); }); });
+    window.addEventListener('mousemove', (e) => { if (!activePoint) return; const rect = imgWrap.getBoundingClientRect(); let x = (e.clientX - rect.left) / scale; let y = (e.clientY - rect.top) / scale; currentCorners[activePoint.id.split('-')[1]] = { x, y }; updateManualPointsUI(); });
+    window.addEventListener('mouseup', () => { activePoint = null; });
+
+    function resetCorners() { const w = imgElement.width; const h = imgElement.height; const pad = 50; currentCorners = { tl: {x: pad, y: pad}, tr: {x: w-pad, y: pad}, br: {x: w-pad, y: h-pad}, bl: {x: pad, y: h-pad} }; updateManualPointsUI(); }
+    function updateManualPointsUI() { setPointCss('cp-tl', currentCorners.tl); setPointCss('cp-tr', currentCorners.tr); setPointCss('cp-br', currentCorners.br); setPointCss('cp-bl', currentCorners.bl); updateHighlightPolygon(); }
+    function setPointCss(id, pt) { const el = document.getElementById(id); el.style.left = pt.x + 'px'; el.style.top = pt.y + 'px'; }
+    function updateHighlightPolygon() { const points = [currentCorners.tl, currentCorners.tr, currentCorners.br, currentCorners.bl]; polyShape.setAttribute('points', points.map(p => `${p.x},${p.y}`).join(' ')); }
+
+    function applyManualCrop(isAuto = false) {
+        if (!isCvLoaded) return;
+        if (!isAuto) log("✂️ 裁切中...");
+        setTimeout(() => {
+            try {
+                let src = cv.imread(canvasInput);
+                let dst = new cv.Mat();
+                let tl = currentCorners.tl, tr = currentCorners.tr, br = currentCorners.br, bl = currentCorners.bl;
+                let width = Math.max(Math.hypot(br.x-bl.x, br.y-bl.y), Math.hypot(tr.x-tl.x, tr.y-tl.y));
+                let height = Math.max(Math.hypot(tr.x-br.x, tr.y-br.y), Math.hypot(tl.x-bl.x, tl.y-bl.y));
+                let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y]);
+                let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, width, 0, width, height, 0, height]);
+                let M = cv.getPerspectiveTransform(srcTri, dstTri);
+                cv.warpPerspective(src, dst, M, new cv.Size(width, height));
+                cv.imshow('canvasOutput', dst);
+                document.getElementById('dlBtn').disabled = false;
+                if(!isAuto) log("✅ 裁切完成");
+                src.delete(); dst.delete(); srcTri.delete(); dstTri.delete(); M.delete();
+            } catch (err) { console.error(err); }
+        }, 50);
+    }
+
+    function downloadResult() { let link = document.createElement('a'); link.download = 'ID_Cropped.png'; link.href = canvasOutput.toDataURL('image/png'); link.click(); }
+</script>
+</body>
+</html>
