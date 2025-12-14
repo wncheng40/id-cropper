@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V22 穿牆版 (鏡像站下載)</title>
+    <title>V23 美國專用版 (Official HuggingFace)</title>
     <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvScriptLoad()" type="text/javascript"></script>
     
     <style>
@@ -90,23 +90,22 @@
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #555; transition: .4s; border-radius: 20px; }
         .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
-        input:checked + .slider { background-color: #9c27b0; }
+        input:checked + .slider { background-color: #2196f3; }
         input:checked + .slider:before { transform: translateX(20px); }
-        .ai-badge { background: linear-gradient(45deg, #9c27b0, #e040fb); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; color: white; margin-left: 5px; }
+        .ai-badge { background: linear-gradient(45deg, #2196f3, #64b5f6); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; color: black; margin-left: 5px; }
         .mode-active { background: #e91e63; border-color: #c2185b; color: white; box-shadow: 0 0 8px rgba(233, 30, 99, 0.6);}
 
-        /* 進度條樣式 */
         #progressBarContainer { display:none; margin-top: 10px; background: #333; border-radius: 4px; height: 6px; overflow: hidden; }
-        #progressBar { width: 0%; height: 100%; background: #9c27b0; transition: width 0.3s; }
-        #progressText { font-size: 0.8em; color: #9c27b0; margin-top: 5px; display:none; white-space: pre-wrap;}
+        #progressBar { width: 0%; height: 100%; background: #2196f3; transition: width 0.3s; }
+        #progressText { font-size: 0.8em; color: #2196f3; margin-top: 5px; display:none; white-space: pre-wrap;}
 
     </style>
 </head>
 <body>
 
 <div style="text-align: center;">
-    <h2>🪪 V22 穿牆版 (鏡像下載)</h2>
-    <p class="subtitle">自動切換鏡像站 | 繞過網路封鎖</p>
+    <h2>🪪 V23 美國專用版 (Clean Cache)</h2>
+    <p class="subtitle">Official HuggingFace | 解決 Unauthorized 錯誤</p>
 </div>
 
 <div class="main-layout">
@@ -132,7 +131,7 @@
 
                 <div class="ai-toggle-container">
                     <span style="font-size: 0.9em; display:flex; align-items:center;">
-                        🤖 AI 輔助偵測 <span class="ai-badge">Mirror</span>
+                        🤖 AI 輔助偵測 <span class="ai-badge">USA</span>
                     </span>
                     <label class="switch">
                         <input type="checkbox" id="showMaskToggle" checked onchange="toggleMaskOverlay()">
@@ -203,14 +202,18 @@
 <script type="module">
     import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.1'; 
     
-    // --- V22 關鍵修正：切換到鏡像站 + 強制單核心 ---
+    // --- V23 關鍵：美國專用設定 ---
     env.allowLocalModels = false;
-    env.useBrowserCache = true;
-    env.backends.onnx.wasm.numThreads = 1;
     
-    // 將下載源指向 hf-mirror.com (繞過封鎖)
-    env.remoteHost = 'https://hf-mirror.com/';
+    // 1. 強制不使用快取，避免讀到之前的錯誤檔案
+    env.useBrowserCache = false; 
+    
+    // 2. 指定官方 Hugging Face (美國源)
+    env.remoteHost = 'https://huggingface.co/';
     env.remotePathTemplate = '{model}/resolve/{revision}/';
+    
+    // 3. GitHub Pages 必備：單核心模式
+    env.backends.onnx.wasm.numThreads = 1;
 
     let segmenter = null;
 
@@ -223,16 +226,17 @@
         
         pCon.style.display = 'block';
         pTxt.style.display = 'block';
-        pTxt.innerText = "🚀 連線鏡像站下載中 (RMBG-1.4)...";
+        pTxt.innerText = "🚀 連線 HuggingFace (US)...";
 
         try {
-            // 使用 RMBG-1.4
+            // RMBG-1.4 (量化版)
             segmenter = await pipeline('image-segmentation', 'Xenova/rmbg-1.4', {
+                quantized: true, // 強制使用量化版 (標準 Web 格式)
                 progress_callback: (data) => {
                     if (data.status === 'progress') {
                         const percent = Math.round(data.progress * 100);
                         pBar.style.width = percent + "%";
-                        pTxt.innerText = `📥 鏡像下載: ${percent}%`;
+                        pTxt.innerText = `📥 下載中: ${percent}% (${data.file})`;
                     } else if (data.status === 'done') {
                         pTxt.innerText = "✅ 下載完成";
                     }
@@ -243,7 +247,7 @@
             return true;
         } catch (e) { 
             console.error("AI 載入失敗", e); 
-            pTxt.innerText = "❌ 鏡像站也連線失敗，請嘗試使用 VPN";
+            pTxt.innerText = "❌ 錯誤：" + e.message + "\n請嘗試『無痕模式』(Incognito) 以排除擴充功能干擾。";
             pTxt.style.color = "#ff5252";
             return false; 
         }
