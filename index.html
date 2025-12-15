@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V12 極致修圖版 (AI Animation)</title>
+    <title>V14 ID Master (Axis-Locked Controls)</title>
     <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvScriptLoad()" type="text/javascript"></script>
     <style>
-        /* --- 樣式設定 --- */
+        /* --- 基礎樣式 --- */
         body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #181818; color: #e0e0e0; margin: 0; padding: 20px; height: 100vh; box-sizing: border-box; overflow: hidden; }
         h2 { color: #fff; margin: 0 0 5px 0; font-size: 1.5rem; }
         .subtitle { color: #888; font-size: 0.9em; margin-bottom: 15px; }
@@ -15,7 +15,7 @@
         button:hover:not(:disabled) { background: #444; border-color: #777; }
         button:active:not(:disabled) { transform: translateY(1px); }
         
-        /* 主要 AI 按鈕樣式 (藍紫色漸層) */
+        /* AI 按鈕 */
         button.ai-primary { 
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
             border: none; color: white; font-weight: bold; 
@@ -23,8 +23,7 @@
         }
         button.ai-primary:hover:not(:disabled) { 
             background: linear-gradient(135deg, #764ba2 0%, #667eea 100%); 
-            box-shadow: 0 6px 20px rgba(118, 75, 162, 0.6);
-            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(118, 75, 162, 0.6); transform: translateY(-1px);
         }
         
         button.success { background: #28a745; border-color: #28a745; font-weight: bold;}
@@ -85,7 +84,7 @@
             pointer-events: none; z-index: 5; opacity: 0; transition: opacity 0.3s;
         }
         #highlightPolygon polygon {
-            fill: rgba(0, 229, 255, 0.15); stroke: rgba(0, 229, 255, 0.9); stroke-width: 2; vector-effect: non-scaling-stroke;
+            fill: rgba(0, 229, 255, 0.1); stroke: rgba(0, 229, 255, 0.8); stroke-width: 2; vector-effect: non-scaling-stroke;
         }
 
         #tempSelectionBox {
@@ -93,14 +92,43 @@
             pointer-events: none; display: none; z-index: 20;
         }
 
+        /* --- 角落控制點 (紅色圓形 - 保持不變) --- */
         .corner-point {
-            position: absolute; width: 16px; height: 16px; 
-            background: rgba(255, 50, 50, 0.6); border: 2px solid #fff; border-radius: 50%;
+            position: absolute; width: 14px; height: 14px; 
+            background: rgba(255, 50, 50, 0.8); border: 2px solid #fff; border-radius: 50%;
             transform: translate(-50%, -50%); cursor: grab; pointer-events: auto; 
-            box-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 30; transition: transform 0.1s, background 0.1s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5); z-index: 30; transition: background 0.1s;
         }
-        .corner-point:hover { background: #ff0000; z-index: 40; border-color: #ffff00; transform: translate(-50%, -50%) scale(1.3);}
-        
+        .corner-point:hover { background: #ff0000; transform: translate(-50%, -50%) scale(1.2); border-color: yellow;}
+
+        /* --- 新增：邊緣控制桿 (白色長條橢圓) --- */
+        .mid-point {
+            position: absolute;
+            background: #ffffff; /* 改成白色 */
+            border: 1px solid #888; /* 輕微邊框增加對比 */
+            border-radius: 10px; /* 橢圓效果 */
+            transform: translate(-50%, -50%); cursor: grab; pointer-events: auto;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.6); z-index: 29;
+            /* ▼▼▼ 修改這裡 ▼▼▼ */
+            /* 原本是 all 0.1s，導致位置移動也有延遲。改成只對背景和陰影做動畫 */
+            transition: background 0.1s, box-shadow 0.1s, border-color 0.1s; 
+            /* ▲▲▲ 修改結束 ▲▲▲ */
+        }
+        /* 上下邊緣是橫條 */
+        .mid-point[data-type="edge-top"], .mid-point[data-type="edge-bottom"] {
+            width: 40px; height: 10px;
+        }
+        /* 左右邊緣是直條 */
+        .mid-point[data-type="edge-left"], .mid-point[data-type="edge-right"] {
+            width: 10px; height: 40px;
+        }
+        .mid-point:hover {
+            background: #f0f0f0; /* hover 稍微變灰白 */
+            border-color: #555;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.8);
+            /* transform: translate(-50%, -50%) scale(1.1);  <-- 移除 scale，因為長條 scale 起來怪怪的，改用加強陰影 */
+        }
+
         .zoom-controls { position: absolute; bottom: 15px; right: 15px; display: flex; gap: 5px; z-index: 50; }
         .zoom-btn {
             background: rgba(0,0,0,0.7); color: white; border: 1px solid #555; width: 30px; height: 30px;
@@ -113,7 +141,6 @@
         .btn-group { display: flex; gap: 8px; }
         .btn-group button { flex: 1; }
         
-        /* Loading Overlay */
         #aiOverlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.85); z-index: 2000; display: none;
@@ -130,13 +157,13 @@
 
 <div id="aiOverlay">
     <div class="loader"></div>
-    <div style="color:white; font-weight:bold; font-size:1.1em;">正在執行 AI 智慧分析...</div>
-    <div style="color:#aaa; font-size:0.9em; margin-top:5px;" id="aiProgress">運算中...</div>
+    <div style="color:white; font-weight:bold; font-size:1.1em;">正在優化邊緣...</div>
+    <div style="color:#aaa; font-size:0.9em; margin-top:5px;" id="aiProgress">AI 運算中</div>
 </div>
 
 <div style="text-align: center;">
-    <h2>🪪 V12 極致修圖版</h2>
-    <p class="subtitle">AI Masking 定位 + 動態縮進效果</p>
+    <h2>🪪 V14 ID Master</h2>
+    <p class="subtitle">AI 自動外擴 + 軸向鎖定控制桿</p>
 </div>
 
 <div class="main-layout">
@@ -171,7 +198,7 @@
                 </div>
 
                 <div id="manualControls" style="display:block; border-top: 1px solid #444; padding-top: 10px;">
-                    <p id="guideText" style="font-size:0.85em; color:#ddd; margin: 0 0 8px;">👇 拖曳紅點微調範圍：</p>
+                    <p id="guideText" style="font-size:0.85em; color:#ddd; margin: 0 0 8px;">👇 拖曳 <span style="color:#ff5050">紅點(角)</span> 或 <span style="color:#ffffff; background:#555; padding: 0 4px; border-radius:4px;">白桿(邊)</span> 微調：</p>
                     <button onclick="applyManualCrop()" id="applyBtn" class="success" style="width:100%">✅ 應用裁切</button>
                 </div>
                 
@@ -181,7 +208,7 @@
             </div>
             <div id="status"></div>
             <label style="margin-top:10px; font-size:0.8em; color:#666;">
-                <input type="checkbox" id="showDebug"> 顯示 AI 遮罩 (Debug)
+                <input type="checkbox" id="showDebug"> 顯示 Debug
             </label>
         </div>
     </div>
@@ -203,10 +230,15 @@
                         </svg>
                         <div id="tempSelectionBox"></div>
                         <div id="manualAdjustLayer">
-                            <div class="corner-point" id="cp-tl"></div>
-                            <div class="corner-point" id="cp-tr"></div>
-                            <div class="corner-point" id="cp-br"></div>
-                            <div class="corner-point" id="cp-bl"></div>
+                            <div class="corner-point" id="cp-tl" data-type="corner"></div>
+                            <div class="corner-point" id="cp-tr" data-type="corner"></div>
+                            <div class="corner-point" id="cp-br" data-type="corner"></div>
+                            <div class="corner-point" id="cp-bl" data-type="corner"></div>
+
+                            <div class="mid-point" id="mp-top" data-type="edge-top" title="拖曳調整上邊緣"></div>
+                            <div class="mid-point" id="mp-right" data-type="edge-right" title="拖曳調整右邊緣"></div>
+                            <div class="mid-point" id="mp-bottom" data-type="edge-bottom" title="拖曳調整下邊緣"></div>
+                            <div class="mid-point" id="mp-left" data-type="edge-left" title="拖曳調整左邊緣"></div>
                         </div>
                     </div>
                 </div>
@@ -236,17 +268,19 @@
 </script>
 
 <script>
-    // --- 核心變數 ---
+    // --- 變數 ---
     let imgElement = new Image();
     let isCvLoaded = false;
     let currentCorners = { tl: {x:0,y:0}, tr: {x:0,y:0}, br: {x:0,y:0}, bl: {x:0,y:0} };
     
-    // Zoom/Pan
     let scale = 1; let panX = 0, panY = 0; let isPanning = false; let startPanX = 0, startPanY = 0;
+    let isDrawingMode = false; let isDrawing = false; let drawStartX = 0, drawStartY = 0;
     
-    // 畫框
-    let isDrawingMode = false; let isDrawing = false; let drawStartX = 0, drawStartY = 0; let activePoint = null;
-
+    // 拖曳狀態
+    let activeHandle = null; 
+    let activeHandleType = null;
+    let dragStartMouse = {x:0, y:0};
+    
     // DOM
     const viewport = document.getElementById('viewport');
     const transformLayer = document.getElementById('transformLayer');
@@ -258,14 +292,11 @@
     const manualAdjustLayer = document.getElementById('manualAdjustLayer');
     const imgWrap = document.getElementById('imgWrap');
     const tempSelectionBox = document.getElementById('tempSelectionBox');
-    const cornerPoints = document.querySelectorAll('.corner-point');
     const statusText = document.getElementById('status');
     const modeIndicator = document.getElementById('modeIndicator');
     const uploadBox = document.getElementById('uploadBox');
     const aiOverlay = document.getElementById('aiOverlay');
     const aiProgress = document.getElementById('aiProgress');
-    
-    // 隱藏的 AI Canvas
     let hiddenAiCanvas = document.createElement('canvas');
 
     function log(msg, type='') {
@@ -273,7 +304,7 @@
         statusText.style.color = type === 'error' ? '#ff5252' : (type === 'warning' ? '#ffc107' : '#aaa');
     }
 
-    // 1. 初始化
+    // 初始化
     function onOpenCvScriptLoad() {
         let checkInterval = setInterval(() => {
             if (typeof cv !== 'undefined' && cv.Mat) {
@@ -287,7 +318,6 @@
         }, 200);
     }
 
-    // 2. 檔案處理
     document.getElementById('fileInput').addEventListener('change', (e) => handleFile(e.target.files[0]));
     uploadBox.addEventListener('dragover', (e) => { e.preventDefault(); if(isCvLoaded) uploadBox.style.borderColor = '#007bff'; });
     uploadBox.addEventListener('dragleave', (e) => { e.preventDefault(); if(isCvLoaded) uploadBox.style.borderColor = '#555'; });
@@ -299,15 +329,15 @@
         imgElement.src = url;
         imgElement.onload = function() {
             refreshCanvasInput(); 
-            resetCorners(); // 初始化紅點在四個角落
+            resetCorners();
             highlightPolygon.style.opacity = '0'; 
-            manualAdjustLayer.style.display = 'block';
+            manualAdjustLayer.style.display = 'none';
             document.getElementById('step1').classList.remove('active'); document.getElementById('step1').classList.add('done');
             activateStep(document.getElementById('step2'));
             document.getElementById('drawBtn').disabled = false;
             document.getElementById('aiBtn').disabled = false;
             resetView(); 
-            log("📷 載入完成，請點擊 AI 自動偵測");
+            log("📷 載入完成");
         }
     }
 
@@ -318,150 +348,210 @@
         ctxInput.drawImage(imgElement, 0, 0);
     }
 
-    // --- 核心：AI 偵測 + 動畫 ---
+    // --- AI 核心 ---
     async function runAiDetection() {
         if (!window.removeBackground) { alert("AI 模組尚未載入"); return; }
         if (isDrawingMode) toggleDrawMode();
 
         aiOverlay.style.display = 'flex';
-        aiProgress.innerText = "Step 1: AI 影像結構分析...";
+        aiProgress.innerText = "Step 1: AI 分析邊緣...";
 
         try {
-            // 1. AI 去背 (Masking)
             const blob = await window.removeBackground(imgElement.src, {
                 progress: (key, current, total) => {
                     const pct = Math.round((current/total)*100);
-                    aiProgress.innerText = `下載模型中... ${pct}%`;
+                    aiProgress.innerText = `下載 AI 模型... ${pct}%`;
                 }
             });
 
-            aiProgress.innerText = "Step 2: 計算最佳裁切點...";
+            aiProgress.innerText = "Step 2: 優化座標與自動外擴...";
             
             const tempImg = new Image();
             tempImg.src = URL.createObjectURL(blob);
             await new Promise((resolve) => { tempImg.onload = resolve; });
 
-            // 準備隱藏畫布 (黑底)
             hiddenAiCanvas.width = imgElement.width;
             hiddenAiCanvas.height = imgElement.height;
             const ctxAi = hiddenAiCanvas.getContext('2d');
             ctxAi.fillStyle = "black";
             ctxAi.fillRect(0, 0, hiddenAiCanvas.width, hiddenAiCanvas.height);
             ctxAi.drawImage(tempImg, 0, 0, hiddenAiCanvas.width, hiddenAiCanvas.height);
-            
-            // Debug view
+
+            // Debug 繪圖 (修復)
             const debugCanvas = document.getElementById('canvasDebug');
             debugCanvas.width = 300; 
-            debugCanvas.height = 300 * (imgElement.height/imgElement.width);
-            debugCanvas.getContext('2d').drawImage(hiddenAiCanvas, 0,0, debugCanvas.width, debugCanvas.height);
-
-            // 2. 呼叫 OpenCV 計算座標 (但不立刻應用)
-            const targetCoords = calculateCorners(hiddenAiCanvas);
+            debugCanvas.height = 300 * (imgElement.height / imgElement.width);
+            debugCanvas.getContext('2d').drawImage(hiddenAiCanvas, 0, 0, debugCanvas.width, debugCanvas.height);
+            
+            let targetCoords = calculateCorners(hiddenAiCanvas);
             
             aiOverlay.style.display = 'none';
 
             if (targetCoords) {
-                log("✨ 偵測成功！正在鎖定範圍...", "success");
+                // 自動外擴 2%
+                targetCoords = inflateRegion(targetCoords, 1.02); 
+                log("✨ 偵測成功 (已自動補償圓角)", "success");
                 highlightPolygon.style.opacity = '1';
-                // 3. 執行縮進動畫
+                manualAdjustLayer.style.display = 'block';
                 animateToCorners(targetCoords);
             } else {
-                log("⚠️ 偵測失敗，請嘗試手動框選", "warning");
+                log("⚠️ 偵測失敗，請嘗試手動", "warning");
             }
 
         } catch (error) {
             console.error(error);
             aiOverlay.style.display = 'none';
-            alert("AI 處理失敗: " + error);
+            alert("錯誤: " + error);
         }
     }
 
-    // 純計算函數，返回座標或 null
+    // 自動外擴
+    function inflateRegion(coords, factor) {
+        const centerX = (coords.tl.x + coords.tr.x + coords.br.x + coords.bl.x) / 4;
+        const centerY = (coords.tl.y + coords.tr.y + coords.br.y + coords.bl.y) / 4;
+        function expandPoint(pt) { return { x: centerX + (pt.x - centerX) * factor, y: centerY + (pt.y - centerY) * factor }; }
+        const w = imgElement.width; const h = imgElement.height;
+        const clamp = (val, max) => Math.max(0, Math.min(val, max));
+        let newTl = expandPoint(coords.tl); let newTr = expandPoint(coords.tr);
+        let newBr = expandPoint(coords.br); let newBl = expandPoint(coords.bl);
+        return { tl: { x: clamp(newTl.x, w), y: clamp(newTl.y, h) }, tr: { x: clamp(newTr.x, w), y: clamp(newTr.y, h) }, br: { x: clamp(newBr.x, w), y: clamp(newBr.y, h) }, bl: { x: clamp(newBl.x, w), y: clamp(newBl.y, h) } };
+    }
+
     function calculateCorners(sourceCanvas) {
         try {
             let src = cv.imread(sourceCanvas);
             let gray = new cv.Mat(), debugMat = new cv.Mat();
             cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
-            
-            // AI Mask 模式下，簡單閾值即可
             cv.threshold(gray, debugMat, 10, 255, cv.THRESH_BINARY);
-            
-            let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
-            cv.morphologyEx(debugMat, debugMat, cv.MORPH_CLOSE, kernel);
-
             let contours = new cv.MatVector();
             cv.findContours(debugMat, contours, new cv.Mat(), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-            
             let maxArea = 0, bestApprox = null;
             const minArea = (src.cols * src.rows) * 0.05;
-
             for (let i = 0; i < contours.size(); ++i) {
                 let cnt = contours.get(i);
                 let area = cv.contourArea(cnt);
                 if (area > minArea) {
                     let peri = cv.arcLength(cnt, true);
                     let approx = new cv.Mat();
-                    cv.approxPolyDP(cnt, approx, 0.01 * peri, true); // AI 邊緣很直，0.01 即可
-                    
+                    cv.approxPolyDP(cnt, approx, 0.01 * peri, true);
                     if (approx.rows >= 4 && approx.rows <= 8 && area > maxArea && cv.isContourConvex(approx)) {
-                        maxArea = area;
-                        if(bestApprox) bestApprox.delete();
-                        bestApprox = approx;
+                        maxArea = area; if(bestApprox) bestApprox.delete(); bestApprox = approx;
                     } else { approx.delete(); }
                 }
             }
-
             let result = null;
             if (bestApprox) {
                 let rect = cv.minAreaRect(bestApprox);
                 let vertices = cv.RotatedRect.points(rect);
-                let ptsSource = [];
-                for(let i=0; i<4; i++) ptsSource.push(vertices[i]);
-                
-                ptsSource.sort((a,b) => a.y - b.y);
-                let top = ptsSource.slice(0,2).sort((a,b) => a.x - b.x);
-                let bottom = ptsSource.slice(2,4).sort((a,b) => a.x - b.x);
-                
+                let pts = []; for(let i=0; i<4; i++) pts.push(vertices[i]);
+                pts.sort((a,b) => a.y - b.y);
+                let top = pts.slice(0,2).sort((a,b) => a.x - b.x);
+                let bottom = pts.slice(2,4).sort((a,b) => a.x - b.x);
                 result = { tl: top[0], tr: top[1], br: bottom[1], bl: bottom[0] };
                 bestApprox.delete();
             }
-
             src.delete(); gray.delete(); debugMat.delete(); contours.delete();
             return result;
         } catch (err) { console.error(err); return null; }
     }
 
-    // --- 動畫函數 ---
-    function animateToCorners(target, duration = 800) {
-        const start = JSON.parse(JSON.stringify(currentCorners)); // Deep copy current pos
+    function animateToCorners(target, duration = 600) {
+        const start = JSON.parse(JSON.stringify(currentCorners));
         const startTime = performance.now();
-
         function step(currentTime) {
             const elapsed = currentTime - startTime;
             let progress = Math.min(elapsed / duration, 1);
-            
-            // EaseOutQuart 緩動函數：快速開始，緩慢結束
-            const ease = 1 - Math.pow(1 - progress, 4);
-
+            const ease = 1 - Math.pow(1 - progress, 3);
             ['tl', 'tr', 'br', 'bl'].forEach(key => {
                 currentCorners[key].x = start[key].x + (target[key].x - start[key].x) * ease;
                 currentCorners[key].y = start[key].y + (target[key].y - start[key].y) * ease;
             });
-
             updateManualPointsUI();
-
-            if (progress < 1) {
-                requestAnimationFrame(step);
-            } else {
-                // 動畫結束
-                log("✅ 定位完成，已自動預覽", "success");
-                applyManualCrop(true); // 自動裁切
-            }
+            if (progress < 1) requestAnimationFrame(step); else applyManualCrop(true);
         }
         requestAnimationFrame(step);
     }
 
-    // --- 其他基礎功能 (保持不變) ---
+    // --- UI 更新 ---
+    function updateManualPointsUI() {
+        setPointCss('cp-tl', currentCorners.tl); setPointCss('cp-tr', currentCorners.tr);
+        setPointCss('cp-br', currentCorners.br); setPointCss('cp-bl', currentCorners.bl);
+        
+        const mpTop = { x: (currentCorners.tl.x + currentCorners.tr.x)/2, y: (currentCorners.tl.y + currentCorners.tr.y)/2 };
+        const mpRight = { x: (currentCorners.tr.x + currentCorners.br.x)/2, y: (currentCorners.tr.y + currentCorners.br.y)/2 };
+        const mpBottom = { x: (currentCorners.br.x + currentCorners.bl.x)/2, y: (currentCorners.br.y + currentCorners.bl.y)/2 };
+        const mpLeft = { x: (currentCorners.bl.x + currentCorners.tl.x)/2, y: (currentCorners.bl.y + currentCorners.tl.y)/2 };
+        setPointCss('mp-top', mpTop); setPointCss('mp-right', mpRight);
+        setPointCss('mp-bottom', mpBottom); setPointCss('mp-left', mpLeft);
+
+        const pts = [currentCorners.tl, currentCorners.tr, currentCorners.br, currentCorners.bl];
+        polyShape.setAttribute('points', pts.map(p => `${p.x},${p.y}`).join(' '));
+    }
+    function setPointCss(id, pt) { const el = document.getElementById(id); el.style.left = pt.x + 'px'; el.style.top = pt.y + 'px'; }
+    function resetCorners() {
+        const w = imgElement.width; const h = imgElement.height; const pad = 30;
+        currentCorners = { tl: {x: pad, y: pad}, tr: {x: w-pad, y: pad}, br: {x: w-pad, y: h-pad}, bl: {x: pad, y: h-pad} };
+        updateManualPointsUI();
+    }
+
+    // --- 拖曳邏輯 (含軸向鎖定修正) ---
+    document.querySelectorAll('.corner-point, .mid-point').forEach(point => {
+        point.addEventListener('mousedown', (e) => {
+            if(isDrawingMode) return;
+            activeHandle = e.target;
+            activeHandleType = e.target.dataset.type;
+            const rect = imgWrap.getBoundingClientRect();
+            dragStartMouse = { x: (e.clientX - rect.left) / scale, y: (e.clientY - rect.top) / scale };
+            e.stopPropagation();
+        });
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (!activeHandle) return;
+        const rect = imgWrap.getBoundingClientRect();
+        let mouseX = (e.clientX - rect.left) / scale;
+        let mouseY = (e.clientY - rect.top) / scale;
+        mouseX = Math.max(0, Math.min(mouseX, imgElement.width));
+        mouseY = Math.max(0, Math.min(mouseY, imgElement.height));
+
+        if (activeHandleType === 'corner') {
+            const key = activeHandle.id.split('-')[1];
+            currentCorners[key] = { x: mouseX, y: mouseY };
+        } 
+        else {
+            // --- 邊緣拖曳 (軸向鎖定) ---
+            // 1. 先取得是哪一個邊緣 (原本這行寫太下面了，導致上面讀不到)
+            const edge = activeHandle.id.split('-')[1];
+
+            // 2. 計算移動量
+            const dx = mouseX - dragStartMouse.x;
+            const dy = mouseY - dragStartMouse.y;
+            
+            // 3. 更新滑鼠位置，供下一次計算使用
+            dragStartMouse = { x: mouseX, y: mouseY };
+
+            // 4. 根據方向，只更新需要的軸向 (這樣就實現了鎖定)
+            if (edge === 'top') {
+                currentCorners.tl.y += dy; 
+                currentCorners.tr.y += dy;
+            } else if (edge === 'bottom') {
+                currentCorners.bl.y += dy; 
+                currentCorners.br.y += dy;
+            } else if (edge === 'left') {
+                currentCorners.tl.x += dx; 
+                currentCorners.bl.x += dx;
+            } else if (edge === 'right') {
+                currentCorners.tr.x += dx; 
+                currentCorners.br.x += dx;
+            }
+        }
+        updateManualPointsUI();
+    });
+
+    window.addEventListener('mouseup', () => { activeHandle = null; });
+
+
+    // --- 其他功能 (保持不變) ---
     function rotateSource(degrees) {
         if (!imgElement.src) return;
         const tempCanvas = document.createElement('canvas');
@@ -473,7 +563,6 @@
         ctx.drawImage(imgElement, -w / 2, -h / 2);
         imgElement.src = tempCanvas.toDataURL();
     }
-
     function resetView() {
         const vW = viewport.clientWidth; const vH = viewport.clientHeight;
         const iW = imgElement.width || 800; const iH = imgElement.height || 600;
@@ -482,7 +571,6 @@
         panX = (vW - iW * scale) / 2; panY = (vH - iH * scale) / 2;
         updateTransform();
     }
-    
     function updateTransform() { transformLayer.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`; }
     function zoomIn() { scale *= 1.2; updateTransform(); }
     function zoomOut() { scale /= 1.2; updateTransform(); }
@@ -497,10 +585,8 @@
         panY = mouseY - (mouseY - panY) * (scale / oldScale);
         updateTransform();
     });
-    
-    // Pan Handlers (略微簡化)
     viewport.addEventListener('mousedown', (e) => {
-        if (e.target.classList.contains('corner-point') || isDrawingMode) return;
+        if (e.target.classList.contains('corner-point') || e.target.classList.contains('mid-point') || isDrawingMode) return;
         isPanning = true; startPanX = e.clientX - panX; startPanY = e.clientY - panY; viewport.classList.add('grabbing');
     });
     window.addEventListener('mousemove', (e) => {
@@ -508,38 +594,22 @@
     });
     window.addEventListener('mouseup', () => { isPanning = false; viewport.classList.remove('grabbing'); });
 
-    // UI Updates
-    function resetCorners() {
-        // 重置到圖片的四個角落 (稍微內縮一點以免看不到)
-        const w = imgElement.width; const h = imgElement.height; const pad = 20;
-        currentCorners = { tl: {x: pad, y: pad}, tr: {x: w-pad, y: pad}, br: {x: w-pad, y: h-pad}, bl: {x: pad, y: h-pad} };
-        updateManualPointsUI();
-    }
-    function updateManualPointsUI() {
-        setPointCss('cp-tl', currentCorners.tl); setPointCss('cp-tr', currentCorners.tr);
-        setPointCss('cp-br', currentCorners.br); setPointCss('cp-bl', currentCorners.bl);
-        const pts = [currentCorners.tl, currentCorners.tr, currentCorners.br, currentCorners.bl];
-        polyShape.setAttribute('points', pts.map(p => `${p.x},${p.y}`).join(' '));
-    }
-    function setPointCss(id, pt) { const el = document.getElementById(id); el.style.left = pt.x + 'px'; el.style.top = pt.y + 'px'; }
-
-    // Draw Mode & Crop logic (與之前版本相同)
+    // Draw Mode
     function toggleDrawMode() {
         isDrawingMode = !isDrawingMode;
         const btn = document.getElementById('drawBtn');
         if (isDrawingMode) {
             btn.classList.add('mode-active'); btn.innerText = "❌ 結束畫框";
             viewport.classList.add('crosshair'); modeIndicator.innerText = "模式：請拖曳畫出範圍";
-            modeIndicator.style.color = "#e91e63"; log("🖍️ 請在圖片上畫框");
+            modeIndicator.style.color = "#e91e63"; 
         } else {
             btn.classList.remove('mode-active'); btn.innerText = "🖍️ 手動畫框";
             viewport.classList.remove('crosshair'); modeIndicator.innerText = "模式：滾輪縮放 / 拖曳背景移動";
             modeIndicator.style.color = "#aaa"; tempSelectionBox.style.display = 'none';
         }
     }
-    
     viewport.addEventListener('mousedown', (e) => {
-        if (!isDrawingMode || e.target.classList.contains('corner-point')) return;
+        if (!isDrawingMode || e.target.classList.contains('corner-point') || e.target.classList.contains('mid-point')) return;
         isDrawing = true; const rect = imgWrap.getBoundingClientRect();
         drawStartX = (e.clientX - rect.left) / scale; drawStartY = (e.clientY - rect.top) / scale;
         tempSelectionBox.style.left = drawStartX + 'px'; tempSelectionBox.style.top = drawStartY + 'px';
@@ -563,29 +633,18 @@
         const x = parseFloat(tempSelectionBox.style.left); const y = parseFloat(tempSelectionBox.style.top);
         if (w > 20 && h > 20) {
             currentCorners = { tl: {x: x, y: y}, tr: {x: x+w, y: y}, br: {x: x+w, y: y+h}, bl: {x: x, y: y+h} };
-            updateManualPointsUI(); highlightPolygon.style.opacity = '1'; toggleDrawMode(); applyManualCrop(true);
+            updateManualPointsUI(); 
+            highlightPolygon.style.opacity = '1'; 
+            manualAdjustLayer.style.display = 'block';
+            toggleDrawMode(); 
+            applyManualCrop(true);
         }
         tempSelectionBox.style.display = 'none';
     });
 
-    cornerPoints.forEach(point => {
-        point.addEventListener('mousedown', (e) => {
-            if(isDrawingMode) return; activePoint = e.target; e.stopPropagation();
-        });
-    });
-    window.addEventListener('mousemove', (e) => {
-        if (!activePoint) return;
-        const rect = imgWrap.getBoundingClientRect();
-        let x = (e.clientX - rect.left) / scale; let y = (e.clientY - rect.top) / scale;
-        x = Math.max(0, Math.min(x, imgElement.width)); y = Math.max(0, Math.min(y, imgElement.height));
-        const id = activePoint.id.split('-')[1]; currentCorners[id] = { x, y }; updateManualPointsUI();
-    });
-    window.addEventListener('mouseup', () => { activePoint = null; });
-
     function applyManualCrop(isAuto = false) {
         if (!isCvLoaded) return;
         if (!isAuto) log("✂️ 裁切中...");
-        // 稍微延遲以確保動畫完成後才執行最後一幀渲染
         setTimeout(() => {
             try {
                 let src = cv.imread(canvasInput);
@@ -602,14 +661,10 @@
                 if(!isAuto) log("✅ 裁切完成");
                 src.delete(); dst.delete(); srcTri.delete(); dstTri.delete(); M.delete();
             } catch (err) { console.error(err); }
-        }, 20); // 縮短延遲
+        }, 20);
     }
-
     function downloadResult() {
-        let link = document.createElement('a');
-        link.download = 'ID_Cropped_AI.png';
-        link.href = canvasOutput.toDataURL('image/png', 1.0);
-        link.click();
+        let link = document.createElement('a'); link.download = 'ID_Cropped_Final.png'; link.href = canvasOutput.toDataURL('image/png', 1.0); link.click();
     }
     document.getElementById('showDebug').addEventListener('change', (e) => {
         document.getElementById('canvasDebug').style.display = e.target.checked ? 'block' : 'none';
